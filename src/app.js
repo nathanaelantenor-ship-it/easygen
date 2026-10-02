@@ -65,7 +65,16 @@ export function initApp() {
   const savedTheme = store.getState().profile.theme || 'light';
   document.documentElement.setAttribute('data-theme', savedTheme);
 
+  // Initialize module from URL hash if valid
+  const initialHash = window.location.hash.replace('#', '').toLowerCase();
+  if (viewRenderers[initialHash]) {
+    currentModule = initialHash;
+  }
+
   function renderShell() {
+    // Dynamic document title
+    document.title = `${viewTitles[currentModule] || 'Gestão Inteligente'} - APP TESTE`;
+
     appRoot.innerHTML = `
       <div class="flex h-screen overflow-hidden">
         <!-- Desktop Sidebar -->
@@ -108,6 +117,9 @@ export function initApp() {
   function navigate(moduleId) {
     if (viewRenderers[moduleId]) {
       currentModule = moduleId;
+      if (window.location.hash !== '#' + moduleId) {
+        window.location.hash = moduleId;
+      }
       renderShell();
     }
   }
@@ -174,6 +186,15 @@ export function initApp() {
   // Store update subscription: keep metrics and state in sync
   store.subscribe((event, payload) => {
     // re-renders current view if necessary
+  });
+
+  // Listen to browser hash changes (Back / Forward)
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace('#', '').toLowerCase();
+    if (viewRenderers[hash] && hash !== currentModule) {
+      currentModule = hash;
+      renderShell();
+    }
   });
 
   renderShell();
