@@ -1,0 +1,20 @@
+# Node & Vercel
+node_modules/
+.vercel/
+.output/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE & Editors
+.vscode/
+.idea/
+*.suo
+*.user

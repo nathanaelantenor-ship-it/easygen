@@ -1,0 +1,23 @@
+{
+  "name": "easygen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "APP TESTE - Central Integrada de Gestão Inteligente para Profissionais e Pequenos Negócios Criativos",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve -s .",
+    "dev": "npx serve -s ."
+  },
+  "keywords": [
+    "gestao-inteligente",
+    "freelancer",
+    "crm",
+    "trello",
+    "kanban",
+    "dashboard",
+    "financeiro",
+    "criativo"
+  ],
+  "author": "Nathan Antenor",
+  "license": "MIT"
+}
