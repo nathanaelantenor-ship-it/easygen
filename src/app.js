@@ -7,6 +7,7 @@ import { openGlobalSearch } from './components/GlobalSearchModal.js';
 import { openNotificationsDrawer } from './components/NotificationsDrawer.js';
 
 import { renderDashboardView } from './views/DashboardView.js';
+import { renderInboxView } from './views/InboxView.js';
 import { renderCRMView } from './views/CRMView.js';
 import { renderClientsView } from './views/ClientsView.js';
 import { renderDocumentsView } from './views/DocumentsView.js';
@@ -23,6 +24,7 @@ import { renderSettingsView } from './views/SettingsView.js';
 
 const viewTitles = {
   dashboard: 'Dashboard Geral',
+  inbox: 'Inbox & Captura Rápida',
   crm: 'CRM & Funil Comercial',
   clients: 'Clientes & Relacionamento',
   documents: 'Central de Documentos',
@@ -40,6 +42,7 @@ const viewTitles = {
 
 const viewRenderers = {
   dashboard: renderDashboardView,
+  inbox: renderInboxView,
   crm: renderCRMView,
   clients: renderClientsView,
   documents: renderDocumentsView,

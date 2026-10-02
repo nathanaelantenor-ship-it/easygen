@@ -1372,6 +1372,127 @@ class Store {
     this.saveState();
   }
 
+  // --- INBOX & CAPTURA RÁPIDA (V2) ---
+  addInboxItem(item) {
+    if (!this.state.inbox) this.state.inbox = [];
+    const newItem = {
+      id: 'inb-' + Date.now(),
+      text: '',
+      category: 'ideia',
+      status: 'pending',
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      source: 'manual',
+      suggestedType: 'task',
+      ...item
+    };
+    this.state.inbox.unshift(newItem);
+    this.addXP(5, 'Captura rápida registrada no Inbox');
+    this.saveState();
+    return newItem;
+  }
+
+  updateInboxItem(id, updates) {
+    if (!this.state.inbox) this.state.inbox = [];
+    const idx = this.state.inbox.findIndex(i => i.id === id);
+    if (idx !== -1) {
+      this.state.inbox[idx] = { ...this.state.inbox[idx], ...updates };
+      this.saveState();
+    }
+  }
+
+  deleteInboxItem(id) {
+    if (!this.state.inbox) this.state.inbox = [];
+    this.state.inbox = this.state.inbox.filter(i => i.id !== id);
+    this.saveState();
+  }
+
+  convertInboxItem(id, targetType, details = {}) {
+    if (!this.state.inbox) this.state.inbox = [];
+    const item = this.state.inbox.find(i => i.id === id);
+    if (!item) return null;
+
+    let createdEntity = null;
+    let label = '';
+
+    if (targetType === 'task') {
+      createdEntity = this.addTask({
+        title: details.title || item.text,
+        priority: details.priority || 'media',
+        dueDate: details.dueDate || new Date().toISOString().split('T')[0],
+        category: 'Trabalho'
+      });
+      label = 'Tarefa';
+      this.addXP(20, 'Item de Inbox transformado em Tarefa');
+    } else if (targetType === 'delivery') {
+      createdEntity = this.addDelivery({
+        title: details.title || item.text,
+        clientId: details.clientId || (this.state.clients[0]?.id || ''),
+        projectId: details.projectId || (this.state.projects[0]?.id || ''),
+        priority: details.priority || 'media',
+        dueDate: details.dueDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+        description: `Originado do Inbox: ${item.text}`
+      });
+      label = 'Entrega';
+      this.addXP(20, 'Item de Inbox transformado em Entrega');
+    } else if (targetType === 'lead') {
+      createdEntity = this.addLead({
+        name: details.name || item.text.slice(0, 40),
+        company: details.company || 'A definir',
+        notes: `Originado do Inbox: ${item.text}`,
+        stage: 'lead'
+      });
+      label = 'Lead Comercial';
+      this.addXP(20, 'Item de Inbox transformado em Lead');
+    } else if (targetType === 'project') {
+      createdEntity = this.addProject({
+        title: details.title || item.text,
+        clientId: details.clientId || (this.state.clients[0]?.id || ''),
+        stage: 'Briefing',
+        description: `Originado do Inbox: ${item.text}`,
+        deadline: details.dueDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
+      });
+      label = 'Projeto';
+      this.addXP(25, 'Item de Inbox transformado em Projeto');
+    } else if (targetType === 'event') {
+      createdEntity = this.addEvent({
+        title: details.title || item.text,
+        date: details.date || new Date().toISOString().split('T')[0],
+        startTime: details.startTime || '10:00',
+        endTime: details.endTime || '11:00',
+        description: `Originado do Inbox: ${item.text}`
+      });
+      label = 'Evento na Agenda';
+      this.addXP(15, 'Item de Inbox agendado');
+    } else if (targetType === 'note') {
+      createdEntity = this.addDocument({
+        name: details.title || (item.text.length > 30 ? item.text.slice(0, 30) + '...' : item.text),
+        category: 'Anotações',
+        notes: item.text,
+        format: 'txt'
+      });
+      label = 'Nota Documentada';
+      this.addXP(10, 'Item de Inbox arquivado como Nota');
+    }
+
+    item.status = 'processed';
+    item.processedAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    item.convertedTo = {
+      type: targetType,
+      label,
+      entityId: createdEntity?.id
+    };
+
+    this.addNotification({
+      title: 'Inbox Processado',
+      message: `Item convertido em ${label} com sucesso!`,
+      type: 'success',
+      link: targetType === 'delivery' ? 'entregas' : (targetType === 'event' ? 'agenda' : targetType === 'task' ? 'routine' : targetType === 'lead' ? 'crm' : targetType === 'project' ? 'projects' : 'documents')
+    });
+
+    this.saveState();
+    return { item, createdEntity };
+  }
+
   searchAll(query) {
     if (!query || query.trim() === '') return {};
     const q = query.toLowerCase().trim();

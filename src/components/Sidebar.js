@@ -1,6 +1,11 @@
+import { store } from '../state/store.js';
+
 export function renderSidebar(currentModule, onNavigate) {
+  const pendingInbox = (store.getState().inbox || []).filter(i => i.status === 'pending').length;
+
   const modules = [
     { id: 'dashboard', label: 'Dashboard', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>' },
+    { id: 'inbox', label: 'Inbox', badge: pendingInbox > 0 ? pendingInbox : null, icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>' },
     { id: 'crm', label: 'CRM', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>' },
     { id: 'clients', label: 'Clientes', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>' },
     { id: 'documents', label: 'Documentos', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>' },
@@ -29,7 +34,7 @@ export function renderSidebar(currentModule, onNavigate) {
             <span class="block text-[10px] text-zinc-400 font-medium -mt-0.5">Gestão Inteligente</span>
           </div>
         </div>
-        <span class="text-[10px] uppercase font-semibold tracking-wider text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/50 dark:border-blue-800/40">v1.0</span>
+        <span class="text-[10px] uppercase font-semibold tracking-wider text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/50 dark:border-blue-800/40">v2.0</span>
       </div>
 
       <!-- Navigation Items -->
@@ -39,14 +44,21 @@ export function renderSidebar(currentModule, onNavigate) {
           return `
             <button 
               data-nav="${m.id}" 
-              class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+              class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all ${
                 isActive 
                   ? 'bg-blue-600 text-white shadow-xs font-semibold' 
                   : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/60'
               }"
             >
-              <span class="${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-600'}">${m.icon}</span>
-              <span>${m.label}</span>
+              <div class="flex items-center gap-3">
+                <span class="${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-600'}">${m.icon}</span>
+                <span>${m.label}</span>
+              </div>
+              ${m.badge ? `
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold ${isActive ? 'bg-white text-blue-600' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'}">
+                  ${m.badge}
+                </span>
+              ` : ''}
             </button>
           `;
         }).join('')}

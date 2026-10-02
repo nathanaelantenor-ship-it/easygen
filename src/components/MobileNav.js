@@ -36,6 +36,7 @@ export function renderMobileNav(currentModule) {
 export function openMobileMenuDrawer(currentModule, onNavigate) {
   const allModules = [
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'inbox', label: 'Inbox & Captura Rápida' },
     { id: 'crm', label: 'CRM (Leads & Funil)' },
     { id: 'clients', label: 'Clientes & Inteligência' },
     { id: 'documents', label: 'Central de Documentos' },
