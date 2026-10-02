@@ -138,6 +138,21 @@ O módulo **Entregas** funciona como a central operacional visual para organizar
 
 ---
 
+### 🚀 Publicação na Vercel (Produção Instantânea)
+
+O projeto está 100% preparado para ser publicado na **Vercel** através da integração nativa com o GitHub:
+1. No painel da Vercel ([vercel.com](https://vercel.com)), clique em **"Add New..."** e selecione **"Project"**.
+2. Conecte sua conta do GitHub e importe o repositório `nathanaelantenor-ship-it/easygen`.
+3. Nas configurações:
+   - **Framework Preset**: `Other` (HTML/JS estático).
+   - **Root Directory**: `./`.
+   - **Build Command**: Em branco.
+   - **Output Directory**: Em branco.
+4. Clique em **"Deploy"**.
+O site será publicado com SSL gratuito, CDN global ultra-rápido e suporte completo a SPA via `vercel.json`.
+
+---
+
 ### 🔒 Dados & Armazenamento
 
 Todos os dados são persistidos no navegador via `LocalStorage`. É possível reiniciar a base demonstrativa completa ou exportar dados a qualquer momento pelo módulo de **Configurações**.
