@@ -1,4 +1,4 @@
-﻿import { store } from '../state/store.js';
+import { store } from '../state/store.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
 
 export function renderDashboardView(container, onNavigate) {
@@ -71,18 +71,18 @@ export function renderDashboardView(container, onNavigate) {
         </div>
       </div>
 
-      <!-- Commercial & Project Indicators -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Commercial, Project & Delivery Indicators -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <!-- Comercial -->
         <div class="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800">
           <div class="flex items-center justify-between mb-4">
             <div>
               <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">Indicadores Comerciais</h3>
-              <p class="text-[11px] text-zinc-400">Eficiência e conversão de propostas</p>
+              <p class="text-[11px] text-zinc-400">Conversão de propostas e leads</p>
             </div>
             <button data-goto="crm" class="text-xs text-blue-600 hover:underline font-medium">Ver CRM →</button>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div class="grid grid-cols-2 gap-3 text-center">
             <div class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40">
               <div class="text-lg font-bold text-zinc-900 dark:text-zinc-100">${metrics.commercial.inFunnel}</div>
               <div class="text-[10px] text-zinc-500 mt-0.5">Leads no Funil</div>
@@ -107,11 +107,11 @@ export function renderDashboardView(container, onNavigate) {
           <div class="flex items-center justify-between mb-4">
             <div>
               <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">Indicadores de Projetos</h3>
-              <p class="text-[11px] text-zinc-400">Status das entregas criativas</p>
+              <p class="text-[11px] text-zinc-400">Status dos contratos criativos</p>
             </div>
             <button data-goto="projects" class="text-xs text-blue-600 hover:underline font-medium">Ver Projetos →</button>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div class="grid grid-cols-2 gap-3 text-center">
             <div class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40">
               <div class="text-lg font-bold text-blue-600">${metrics.projects.active}</div>
               <div class="text-[10px] text-zinc-500 mt-0.5">Projetos Ativos</div>
@@ -127,6 +127,35 @@ export function renderDashboardView(container, onNavigate) {
             <div class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40">
               <div class="text-xs font-bold text-zinc-900 dark:text-zinc-100 mt-1">${formatCurrency(metrics.projects.totalRevenue)}</div>
               <div class="text-[10px] text-zinc-500 mt-0.5">Valor em Carteira</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Entregas & Operações -->
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">Central de Entregas</h3>
+              <p class="text-[11px] text-zinc-400">Operações e demandas do Kanban</p>
+            </div>
+            <button data-goto="entregas" class="text-xs text-blue-600 hover:underline font-medium">Ver Entregas →</button>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-center">
+            <div class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40">
+              <div class="text-lg font-bold text-zinc-900 dark:text-zinc-100">${(state.deliveries || []).length}</div>
+              <div class="text-[10px] text-zinc-500 mt-0.5">Total Demandas</div>
+            </div>
+            <div class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40">
+              <div class="text-lg font-bold text-amber-600 dark:text-amber-400">${(state.deliveries || []).filter(d => d.status === 'em_andamento').length}</div>
+              <div class="text-[10px] text-zinc-500 mt-0.5">Em Andamento</div>
+            </div>
+            <div class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40">
+              <div class="text-lg font-bold text-purple-600 dark:text-purple-400">${(state.deliveries || []).filter(d => d.status === 'em_revisao').length}</div>
+              <div class="text-[10px] text-zinc-500 mt-0.5">Em Revisão</div>
+            </div>
+            <div class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40">
+              <div class="text-lg font-bold text-emerald-600 dark:text-emerald-400">${(state.deliveries || []).filter(d => d.status === 'entregue').length}</div>
+              <div class="text-[10px] text-zinc-500 mt-0.5">Entregues</div>
             </div>
           </div>
         </div>
@@ -162,8 +191,8 @@ export function renderDashboardView(container, onNavigate) {
         </div>
       </div>
 
-      <!-- Bottom Grids: Recent Transactions and Key Projects -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <!-- Bottom Grids: Recent Transactions, Key Projects and Recent Deliveries -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <!-- Lançamentos Recentes -->
         <div class="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800">
           <div class="flex items-center justify-between mb-4">
@@ -171,7 +200,7 @@ export function renderDashboardView(container, onNavigate) {
             <button data-goto="finance" class="text-xs text-blue-600 hover:underline font-medium">Ver Financeiro →</button>
           </div>
           <div class="divide-y divide-zinc-100 dark:divide-zinc-800">
-            ${state.transactions.slice(0, 5).map(tx => `
+            ${state.transactions.slice(0, 4).map(tx => `
               <div class="py-3 flex items-center justify-between text-xs">
                 <div>
                   <div class="font-medium text-zinc-800 dark:text-zinc-200">${tx.title}</div>
@@ -199,16 +228,52 @@ export function renderDashboardView(container, onNavigate) {
               return `
                 <div class="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-850/50">
                   <div class="flex items-center justify-between text-xs mb-1.5">
-                    <span class="font-semibold text-zinc-800 dark:text-zinc-200">${proj.title}</span>
+                    <span class="font-semibold text-zinc-800 dark:text-zinc-200 truncate max-w-[150px]">${proj.title}</span>
                     ${getStatusBadge(proj.stage)}
                   </div>
                   <div class="flex items-center justify-between text-[11px] text-zinc-400 mb-2">
-                    <span>${proj.clientName}</span>
-                    <span>Prazo: ${formatDate(proj.deadlineDate)}</span>
+                    <span class="truncate max-w-[130px]">${proj.clientName}</span>
+                    <span>${formatDate(proj.deadlineDate)}</span>
                   </div>
                   <div class="w-full bg-zinc-200 dark:bg-zinc-700 h-1.5 rounded-full overflow-hidden">
                     <div class="bg-blue-600 h-full rounded-full transition-all" style="width: ${percent}%"></div>
                   </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Entregas Recentes -->
+        <div class="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">Próximas Entregas</h3>
+            <button data-goto="entregas" class="text-xs text-blue-600 hover:underline font-medium">Ver Kanban →</button>
+          </div>
+          <div class="space-y-3">
+            ${(state.deliveries || []).slice(0, 4).map(del => {
+              const checklist = del.checklist || [];
+              const completedChecks = checklist.filter(c => c.completed).length;
+              const chkPercent = checklist.length > 0 ? Math.round((completedChecks / checklist.length) * 100) : 0;
+              return `
+                <div class="p-3 rounded-xl border border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-850/50">
+                  <div class="flex items-center justify-between text-xs mb-1">
+                    <span class="font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[160px]">${del.title}</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
+                      del.priority === 'urgente' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400' :
+                      del.priority === 'alta' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' :
+                      'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400'
+                    }">${del.priority.toUpperCase()}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5">
+                    <span class="truncate max-w-[130px]">${del.clientName || 'Geral'}</span>
+                    <span>${del.dueDate ? del.dueDate.split('-').reverse().slice(0, 2).join('/') : 'Sem prazo'}</span>
+                  </div>
+                  ${checklist.length > 0 ? `
+                    <div class="w-full bg-zinc-200 dark:bg-zinc-700 h-1.5 rounded-full overflow-hidden">
+                      <div class="bg-blue-600 h-full rounded-full transition-all" style="width: ${chkPercent}%"></div>
+                    </div>
+                  ` : ''}
                 </div>
               `;
             }).join('')}

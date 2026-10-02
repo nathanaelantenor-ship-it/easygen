@@ -1,4 +1,4 @@
-﻿import { initialData } from './initialData.js';
+import { initialData } from './initialData.js';
 
 const STORAGE_KEY = 'APP_TESTE_DATA_V1';
 
@@ -12,7 +12,11 @@ class Store {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (!parsed.deliveries) parsed.deliveries = JSON.parse(JSON.stringify(initialData.deliveries || []));
+        if (!parsed.deliveryColumns) parsed.deliveryColumns = JSON.parse(JSON.stringify(initialData.deliveryColumns || []));
+        if (!parsed.deliveryTags) parsed.deliveryTags = JSON.parse(JSON.stringify(initialData.deliveryTags || []));
+        return parsed;
       }
     } catch (e) {
       console.error('Erro ao carregar dados do LocalStorage:', e);
@@ -68,7 +72,10 @@ class Store {
       goals: [],
       events: [],
       documents: [],
-      notifications: []
+      notifications: [],
+      deliveries: [],
+      deliveryColumns: [...(initialData.deliveryColumns || [])],
+      deliveryTags: [...(initialData.deliveryTags || [])]
     };
     this.saveState();
   }
@@ -574,6 +581,349 @@ class Store {
     this.state.notifications.forEach(n => n.read = true);
     this.saveState();
   }
+  // --- ENTREGAS & OPERAÇÕES ---
+  addDelivery(delivery) {
+    const newDelivery = {
+      id: 'del-' + Date.now(),
+      title: 'Nova Entrega',
+      status: 'backlog',
+      priority: 'media',
+      coverImage: '',
+      dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      assignee: this.state.profile.name,
+      tags: [],
+      description: '',
+      checklist: [],
+      files: [],
+      comments: [],
+      history: [
+        { id: 'h-' + Date.now(), date: new Date().toISOString().replace('T', ' ').slice(0, 16), text: 'Entrega criada no sistema.' }
+      ],
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+      ...delivery
+    };
+
+    if (newDelivery.clientId && !newDelivery.clientName) {
+      const client = this.state.clients.find(c => c.id === newDelivery.clientId);
+      if (client) newDelivery.clientName = client.name;
+    }
+    if (newDelivery.projectId && !newDelivery.projectName) {
+      const project = this.state.projects.find(p => p.id === newDelivery.projectId);
+      if (project) newDelivery.projectName = project.title;
+    }
+
+    if (!this.state.deliveries) this.state.deliveries = [];
+    this.state.deliveries.unshift(newDelivery);
+
+    if (newDelivery.projectId) {
+      this.calculateProjectProgressFromDeliveries(newDelivery.projectId);
+    }
+
+    this.addNotification({
+      title: 'Nova Entrega Cadastrada',
+      message: `'${newDelivery.title}' adicionada à Central de Entregas.`,
+      type: 'info',
+      link: 'entregas'
+    });
+
+    this.saveState();
+    return newDelivery;
+  }
+
+  updateDelivery(id, updates, historyMsg = null) {
+    if (!this.state.deliveries) this.state.deliveries = [];
+    const idx = this.state.deliveries.findIndex(d => d.id === id);
+    if (idx !== -1) {
+      const d = this.state.deliveries[idx];
+      const history = d.history ? [...d.history] : [];
+      if (historyMsg) {
+        history.unshift({
+          id: 'h-' + Date.now(),
+          date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          text: historyMsg
+        });
+      }
+      this.state.deliveries[idx] = {
+        ...d,
+        ...updates,
+        history,
+        updatedAt: new Date().toISOString().split('T')[0]
+      };
+
+      if (this.state.deliveries[idx].projectId) {
+        this.calculateProjectProgressFromDeliveries(this.state.deliveries[idx].projectId);
+      }
+
+      this.saveState();
+    }
+  }
+
+  deleteDelivery(id) {
+    if (!this.state.deliveries) return;
+    const d = this.state.deliveries.find(x => x.id === id);
+    const projectId = d?.projectId;
+    this.state.deliveries = this.state.deliveries.filter(x => x.id !== id);
+    if (projectId) {
+      this.calculateProjectProgressFromDeliveries(projectId);
+    }
+    this.saveState();
+  }
+
+  duplicateDelivery(id, newTitle) {
+    if (!this.state.deliveries) return null;
+    const orig = this.state.deliveries.find(d => d.id === id);
+    if (!orig) return null;
+
+    const dup = {
+      ...orig,
+      id: 'del-' + Date.now(),
+      title: newTitle || `${orig.title} (Cópia)`,
+      checklist: (orig.checklist || []).map(item => ({ ...item, id: 'c-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4), completed: false })),
+      files: [],
+      comments: [],
+      history: [
+        { id: 'h-' + Date.now(), date: new Date().toISOString().replace('T', ' ').slice(0, 16), text: `Duplicada a partir de '${orig.title}'.` }
+      ],
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0]
+    };
+
+    this.state.deliveries.unshift(dup);
+    if (dup.projectId) {
+      this.calculateProjectProgressFromDeliveries(dup.projectId);
+    }
+    this.saveState();
+    return dup;
+  }
+
+  moveDeliveryStatus(deliveryId, targetStatus) {
+    if (!this.state.deliveries) return;
+    const delivery = this.state.deliveries.find(d => d.id === deliveryId);
+    if (!delivery) return;
+
+    const prevStatus = delivery.status;
+    if (prevStatus === targetStatus) return;
+
+    delivery.status = targetStatus;
+    delivery.updatedAt = new Date().toISOString().split('T')[0];
+    if (targetStatus === 'entregue') {
+      delivery.completedAt = new Date().toISOString().split('T')[0];
+    } else {
+      delivery.completedAt = null;
+    }
+
+    if (!delivery.history) delivery.history = [];
+    delivery.history.unshift({
+      id: 'h-' + Date.now(),
+      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      text: `Status alterado de '${prevStatus}' para '${targetStatus}'.`
+    });
+
+    if (delivery.projectId) {
+      this.calculateProjectProgressFromDeliveries(delivery.projectId);
+    }
+
+    this.saveState();
+  }
+
+  toggleDeliveryChecklistItem(deliveryId, itemId) {
+    if (!this.state.deliveries) return;
+    const delivery = this.state.deliveries.find(d => d.id === deliveryId);
+    if (!delivery || !delivery.checklist) return;
+
+    const item = delivery.checklist.find(i => i.id === itemId);
+    if (item) {
+      item.completed = !item.completed;
+      if (!delivery.history) delivery.history = [];
+      delivery.history.unshift({
+        id: 'h-' + Date.now(),
+        date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        text: `Item do checklist '${item.title}' marcado como ${item.completed ? 'concluído' : 'pendente'}.`
+      });
+      this.saveState();
+    }
+  }
+
+  addDeliveryChecklistItem(deliveryId, title) {
+    if (!this.state.deliveries) return;
+    const delivery = this.state.deliveries.find(d => d.id === deliveryId);
+    if (!delivery) return;
+    if (!delivery.checklist) delivery.checklist = [];
+
+    const newItem = {
+      id: 'c-' + Date.now(),
+      title,
+      completed: false
+    };
+    delivery.checklist.push(newItem);
+    this.saveState();
+    return newItem;
+  }
+
+  deleteDeliveryChecklistItem(deliveryId, itemId) {
+    if (!this.state.deliveries) return;
+    const delivery = this.state.deliveries.find(d => d.id === deliveryId);
+    if (!delivery || !delivery.checklist) return;
+    delivery.checklist = delivery.checklist.filter(i => i.id !== itemId);
+    this.saveState();
+  }
+
+  addDeliveryFile(deliveryId, file) {
+    if (!this.state.deliveries) return;
+    const delivery = this.state.deliveries.find(d => d.id === deliveryId);
+    if (!delivery) return;
+    if (!delivery.files) delivery.files = [];
+
+    const newFile = {
+      id: 'f-' + Date.now(),
+      name: file.name,
+      size: file.size || '1.5 MB',
+      type: file.type || 'arquivo',
+      date: new Date().toISOString().split('T')[0],
+      uploader: this.state.profile.name,
+      url: file.url || '#'
+    };
+    delivery.files.push(newFile);
+
+    // Conexão automática com a Central de Documentos
+    this.addDocument({
+      name: newFile.name,
+      category: 'Arquivos finais',
+      format: newFile.type,
+      size: newFile.size,
+      clientId: delivery.clientId || null,
+      clientName: delivery.clientName || null,
+      projectId: delivery.projectId || null,
+      projectName: delivery.projectName || null
+    });
+
+    if (!delivery.history) delivery.history = [];
+    delivery.history.unshift({
+      id: 'h-' + Date.now(),
+      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      text: `Arquivo '${newFile.name}' anexado à entrega.`
+    });
+
+    this.saveState();
+    return newFile;
+  }
+
+  addDeliveryComment(deliveryId, text) {
+    if (!this.state.deliveries) return;
+    const delivery = this.state.deliveries.find(d => d.id === deliveryId);
+    if (!delivery) return;
+    if (!delivery.comments) delivery.comments = [];
+
+    const now = new Date();
+    const newComment = {
+      id: 'com-' + Date.now(),
+      author: this.state.profile.name,
+      date: now.toISOString().split('T')[0],
+      time: now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      text
+    };
+    delivery.comments.push(newComment);
+
+    if (!delivery.history) delivery.history = [];
+    delivery.history.unshift({
+      id: 'h-' + Date.now(),
+      date: now.toISOString().replace('T', ' ').slice(0, 16),
+      text: `Novo comentário adicionado por ${newComment.author}.`
+    });
+
+    this.saveState();
+    return newComment;
+  }
+
+  deleteDeliveryComment(deliveryId, commentId) {
+    if (!this.state.deliveries) return;
+    const delivery = this.state.deliveries.find(d => d.id === deliveryId);
+    if (!delivery || !delivery.comments) return;
+    delivery.comments = delivery.comments.filter(c => c.id !== commentId);
+    this.saveState();
+  }
+
+  addDeliveryColumn(column) {
+    if (!this.state.deliveryColumns) this.state.deliveryColumns = [];
+    const newCol = {
+      id: 'col-' + Date.now(),
+      title: column.title || 'Nova Coluna',
+      color: column.color || 'border-zinc-400'
+    };
+    this.state.deliveryColumns.push(newCol);
+    this.saveState();
+    return newCol;
+  }
+
+  renameDeliveryColumn(id, title) {
+    if (!this.state.deliveryColumns) return;
+    const col = this.state.deliveryColumns.find(c => c.id === id);
+    if (col) {
+      col.title = title;
+      this.saveState();
+    }
+  }
+
+  deleteDeliveryColumn(id) {
+    if (!this.state.deliveryColumns) return;
+    this.state.deliveryColumns = this.state.deliveryColumns.filter(c => c.id !== id);
+    this.saveState();
+  }
+
+  addDeliveryTag(tag) {
+    if (!this.state.deliveryTags) this.state.deliveryTags = [];
+    const newTag = {
+      id: 'tag-' + Date.now(),
+      name: tag.name,
+      color: tag.color || '#3B82F6'
+    };
+    this.state.deliveryTags.push(newTag);
+    this.saveState();
+    return newTag;
+  }
+
+  calculateProjectProgressFromDeliveries(projectId) {
+    const project = this.state.projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    const projectDeliveries = (this.state.deliveries || []).filter(d => d.projectId === projectId);
+    if (projectDeliveries.length > 0) {
+      const deliveredCount = projectDeliveries.filter(d => d.status === 'entregue').length;
+      const progressPercent = Math.round((deliveredCount / projectDeliveries.length) * 100);
+
+      if (progressPercent === 100 && project.stage !== 'pago') {
+        project.stage = 'entrega';
+      }
+    }
+  }
+
+  getDeliveryMetrics() {
+    const deliveries = this.state.deliveries || [];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const inProgress = deliveries.filter(d => d.status === 'em_andamento').length;
+    const inReview = deliveries.filter(d => d.status === 'em_revisao').length;
+    const delivered = deliveries.filter(d => d.status === 'entregue').length;
+    const dueToday = deliveries.filter(d => d.dueDate === todayStr && d.status !== 'entregue').length;
+    const overdue = deliveries.filter(d => d.dueDate && d.dueDate < todayStr && d.status !== 'entregue').length;
+    const dueSoon = deliveries.filter(d => {
+      if (!d.dueDate || d.status === 'entregue' || d.dueDate <= todayStr) return false;
+      const diffDays = (new Date(d.dueDate) - new Date(todayStr)) / 86400000;
+      return diffDays <= 3;
+    }).length;
+
+    return {
+      total: deliveries.length,
+      inProgress,
+      inReview,
+      delivered,
+      overdue,
+      dueToday,
+      dueSoon
+    };
+  }
+
   // --- METRICAS CALCULADAS DO DASHBOARD & RELACIONAMENTOS ---
   getDashboardMetrics(period = 'mes') {
     const txs = this.state.transactions.filter(t => t.scope === 'business');
@@ -622,7 +972,8 @@ class Store {
         completed: completedProjects,
         urgent: urgentProjects,
         totalRevenue: projects.reduce((acc, p) => acc + (p.value || 0), 0)
-      }
+      },
+      deliveries: this.getDeliveryMetrics()
     };
   }
 
@@ -631,6 +982,7 @@ class Store {
     const q = query.toLowerCase().trim();
 
     return {
+      entregas: (this.state.deliveries || []).filter(d => (d.title && d.title.toLowerCase().includes(q)) || (d.clientName && d.clientName.toLowerCase().includes(q)) || (d.projectName && d.projectName.toLowerCase().includes(q)) || (d.tags && d.tags.some(t => t.toLowerCase().includes(q)))),
       clientes: this.state.clients.filter(c => (c.name && c.name.toLowerCase().includes(q)) || (c.company && c.company.toLowerCase().includes(q))),
       leads: this.state.leads.filter(l => (l.name && l.name.toLowerCase().includes(q)) || (l.company && l.company.toLowerCase().includes(q)) || (l.serviceOfInterest && l.serviceOfInterest.toLowerCase().includes(q))),
       projetos: this.state.projects.filter(p => (p.title && p.title.toLowerCase().includes(q)) || (p.clientName && p.clientName.toLowerCase().includes(q))),

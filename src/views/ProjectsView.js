@@ -1,4 +1,4 @@
-﻿import { store } from '../state/store.js';
+import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
@@ -272,6 +272,12 @@ export function openProjectDetailsModal(projectId, onRefresh) {
   const proj = store.getState().projects.find(p => p.id === projectId);
   if (!proj) return;
 
+  const projectDeliveries = (store.getState().deliveries || []).filter(d => d.projectId === proj.id);
+  const completedDeliveries = projectDeliveries.filter(d => d.status === 'entregue').length;
+  const deliveryProgressPercent = projectDeliveries.length > 0 
+    ? Math.round((completedDeliveries / projectDeliveries.length) * 100) 
+    : (proj.progress || 0);
+
   const content = `
     <div class="space-y-4">
       <!-- Header Info -->
@@ -283,6 +289,41 @@ export function openProjectDetailsModal(projectId, onRefresh) {
         <div class="text-right">
           <span class="text-zinc-400 text-[11px] block">Valor do Projeto</span>
           <span class="font-bold text-blue-600 dark:text-blue-400 text-sm sm:text-base">${formatCurrency(proj.value)}</span>
+        </div>
+      </div>
+
+      <!-- Entregas Operacionais do Projeto -->
+      <div class="space-y-2 p-3.5 bg-blue-50/40 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl">
+        <div class="flex items-center justify-between text-xs">
+          <div>
+            <span class="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+              Entregas do Projeto (${completedDeliveries}/${projectDeliveries.length})
+            </span>
+            <span class="text-[10px] text-zinc-500">Progresso calculado automaticamente pelas entregas concluídas</span>
+          </div>
+          <span class="text-xs font-bold text-blue-600 dark:text-blue-400">${deliveryProgressPercent}%</span>
+        </div>
+
+        <div class="w-full bg-zinc-200 dark:bg-zinc-700 h-2 rounded-full overflow-hidden">
+          <div class="h-full bg-blue-600 rounded-full transition-all" style="width: ${deliveryProgressPercent}%"></div>
+        </div>
+
+        <div class="space-y-1.5 max-h-40 overflow-y-auto pt-1">
+          ${projectDeliveries.length === 0 ? `
+            <p class="text-[11px] text-zinc-400 py-1 italic">Nenhuma entrega vinculada a este projeto ainda.</p>
+          ` : projectDeliveries.map(d => `
+            <div class="flex items-center justify-between p-2 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/70 dark:border-zinc-800 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full ${d.status === 'entregue' ? 'bg-emerald-500' : 'bg-blue-600'}"></span>
+                <span class="font-medium text-zinc-800 dark:text-zinc-200">${d.title}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] text-zinc-400">${d.dueDate ? d.dueDate.split('-').reverse().slice(0, 2).join('/') : ''}</span>
+                <span class="text-[10px] font-semibold capitalize px-2 py-0.5 rounded ${d.status === 'entregue' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'}">${d.status}</span>
+              </div>
+            </div>
+          `).join('')}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-﻿export const initialData = {
+export const initialData = {
   profile: {
     name: "Nathan Antenor",
     role: "Diretor Criativo & Design Specialist",
@@ -1038,6 +1038,261 @@
       link: "goals",
       read: true,
       createdAt: "2026-10-01 18:00"
+    }
+  ],
+  deliveryColumns: [
+    { id: "backlog", title: "Backlog", color: "border-zinc-400" },
+    { id: "em_andamento", title: "Em andamento", color: "border-blue-500" },
+    { id: "em_revisao", title: "Em revisão", color: "border-amber-500" },
+    { id: "aprovado", title: "Aprovado", color: "border-purple-500" },
+    { id: "entregue", title: "Entregue", color: "border-emerald-500" },
+    { id: "pausado", title: "Pausado", color: "border-zinc-500" }
+  ],
+  deliveryTags: [
+    { id: "tag-1", name: "Design", color: "#3B82F6" },
+    { id: "tag-2", name: "Social Media", color: "#EC4899" },
+    { id: "tag-3", name: "Vídeo", color: "#8B5CF6" },
+    { id: "tag-4", name: "UI/UX", color: "#10B981" },
+    { id: "tag-5", name: "Urgente", color: "#EF4444" },
+    { id: "tag-6", name: "Copywriting", color: "#F59E0B" }
+  ],
+  deliveries: [
+    {
+      id: "del-1",
+      title: "Post Campanha de Matrícula",
+      clientId: "cli-1",
+      clientName: "Studio Lumina Iluminação",
+      projectId: "proj-1",
+      projectName: "Redesign de Identidade Visual & Aplicações",
+      status: "em_andamento",
+      priority: "alta",
+      coverImage: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80",
+      dueDate: "2026-10-10",
+      assignee: "Nathan Antenor",
+      tags: ["Design", "Social Media"],
+      description: "Criação de post em carrossel e estático com foco na conversão para nova turma e captação de leads qualificados.",
+      checklist: [
+        { id: "c-1", title: "Criação do conceito visual 3D", completed: true },
+        { id: "c-2", title: "Redação de copy persuasiva", completed: true },
+        { id: "c-3", title: "Aprovação interna do diretor de arte", completed: true },
+        { id: "c-4", title: "Exportação dos formatos 1:1 e 9:16", completed: false },
+        { id: "c-5", title: "Envio para aprovação no portal", completed: false }
+      ],
+      files: [
+        { id: "f-1", name: "Mockup_Campanha_v1.png", size: "2.4 MB", type: "png", date: "2026-10-01", uploader: "Nathan" }
+      ],
+      comments: [
+        { id: "com-1", author: "Nathan Antenor", date: "2026-10-01", time: "14:30", text: "Conceito aprovado pelo cliente, finalizando os recortes." }
+      ],
+      history: [
+        { id: "h-1", date: "2026-09-30 10:00", text: "Entrega criada no Backlog." },
+        { id: "h-2", date: "2026-10-01 11:20", text: "Você moveu a entrega de Backlog para Em andamento." }
+      ],
+      createdAt: "2026-09-30",
+      updatedAt: "2026-10-01"
+    },
+    {
+      id: "del-2",
+      title: "Design System Tokens & Componentes App",
+      clientId: "cli-2",
+      clientName: "Nexo Soluções Digitais",
+      projectId: "proj-2",
+      projectName: "Design de Interface Web App & Mobile Nexo",
+      status: "em_revisao",
+      priority: "alta",
+      coverImage: "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=600&auto=format&fit=crop&q=80",
+      dueDate: "2026-10-04",
+      assignee: "Nathan Antenor",
+      tags: ["UI/UX", "Design"],
+      description: "Padronização completa de tokens de espaçamento, tipografia, cores e componentes essenciais da interface.",
+      checklist: [
+        { id: "c-6", title: "Definição de cores e tipografia no Figma", completed: true },
+        { id: "c-7", title: "Componentes de Botões, Inputs e Modais", completed: true },
+        { id: "c-8", title: "Documentação de tokens para desenvolvedores", completed: true },
+        { id: "c-9", title: "Validação com equipe de front-end", completed: false }
+      ],
+      files: [
+        { id: "f-2", name: "Tokens_Design_System_Nexo.fig", size: "8.1 MB", type: "fig", date: "2026-09-29", uploader: "Nathan" }
+      ],
+      comments: [
+        { id: "com-2", author: "Carlos Eduardo", date: "2026-09-30", time: "16:00", text: "Revisando os estados de hover e active nos botões." }
+      ],
+      history: [
+        { id: "h-3", date: "2026-09-28 09:00", text: "Entrega criada." },
+        { id: "h-4", date: "2026-10-01 15:40", text: "Você moveu a entrega de Em andamento para Em revisão." }
+      ],
+      createdAt: "2026-09-28",
+      updatedAt: "2026-10-01"
+    },
+    {
+      id: "del-3",
+      title: "Roteiro Técnico & Storyboard 60s",
+      clientId: "cli-1",
+      clientName: "Pulse Academia & Cross",
+      projectId: "proj-3",
+      projectName: "Vídeo Institucional Comercial",
+      status: "aprovado",
+      priority: "media",
+      coverImage: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&auto=format&fit=crop&q=80",
+      dueDate: "2026-10-05",
+      assignee: "Nathan Antenor",
+      tags: ["Vídeo", "Copywriting"],
+      description: "Estruturação das cenas dinâmicas com marcação de tempo para locução e efeitos sonoros.",
+      checklist: [
+        { id: "c-10", title: "Estrutura dos 3 atos do vídeo", completed: true },
+        { id: "c-11", title: "Roteiro de locução em voz off", completed: true },
+        { id: "c-12", title: "Validação pelo diretor da academia", completed: true }
+      ],
+      files: [
+        { id: "f-3", name: "Storyboard_Pulse_vFinal.pdf", size: "3.5 MB", type: "pdf", date: "2026-09-29", uploader: "Nathan" }
+      ],
+      comments: [],
+      history: [
+        { id: "h-5", date: "2026-09-29 11:00", text: "Roteiro aprovado sem ressalvas!" }
+      ],
+      createdAt: "2026-09-25",
+      updatedAt: "2026-09-29"
+    },
+    {
+      id: "del-4",
+      title: "Fechamento de Arquivos Gráficos (Jaleco & Papelaria)",
+      clientId: "cli-3",
+      clientName: "Dr. Henrique Paiva",
+      projectId: "proj-4",
+      projectName: "Identidade Visual & Papelaria Fina",
+      status: "entregue",
+      priority: "urgente",
+      coverImage: "https://images.unsplash.com/photo-1586717791821-3f44a563fa4c?w=600&auto=format&fit=crop&q=80",
+      dueDate: "2026-10-02",
+      assignee: "Nathan Antenor",
+      tags: ["Design", "Urgente"],
+      description: "Arquivos finais prontos em vetor CMYK e separação de cor Pantone para bordado em jaleco e gráfica rápida.",
+      checklist: [
+        { id: "c-13", title: "Conversão em curvas (CMYK/Pantone)", completed: true },
+        { id: "c-14", title: "Gabarito de impressão de cartões e envelopes", completed: true },
+        { id: "c-15", title: "Envio de link de download direto para o cliente", completed: true }
+      ],
+      files: [
+        { id: "f-4", name: "Papelaria_Pronta_Grafica.zip", size: "45.2 MB", type: "zip", date: "2026-10-01", uploader: "Nathan" }
+      ],
+      comments: [
+        { id: "com-3", author: "Dr. Henrique Paiva", date: "2026-10-02", time: "09:15", text: "Arquivos recebidos e aprovados pela gráfica! Muito obrigado Nathan!" }
+      ],
+      history: [
+        { id: "h-6", date: "2026-10-02 08:30", text: "Você moveu a entrega para Entregue." }
+      ],
+      createdAt: "2026-09-20",
+      updatedAt: "2026-10-02",
+      completedAt: "2026-10-02"
+    },
+    {
+      id: "del-5",
+      title: "Carrossel Instagram: Destaques da Casa da Serra",
+      clientId: "cli-4",
+      clientName: "Vanguarda Arquitetura",
+      projectId: "proj-5",
+      projectName: "Campanhas Visuais & Redes Sociais Q3",
+      status: "em_andamento",
+      priority: "media",
+      coverImage: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600&auto=format&fit=crop&q=80",
+      dueDate: "2026-10-06",
+      assignee: "Nathan Antenor",
+      tags: ["Social Media", "Design"],
+      description: "Carrossel de 8 lâminas mostrando os detalhes de marcenaria e iluminação natural do projeto premiado.",
+      checklist: [
+        { id: "c-16", title: "Seleção das 7 melhores fotos da obra", completed: true },
+        { id: "c-17", title: "Tratamento de cor e aplicação de template", completed: true },
+        { id: "c-18", title: "Texto explicativo dos materiais nobres", completed: false }
+      ],
+      files: [],
+      comments: [],
+      history: [
+        { id: "h-7", date: "2026-10-01 14:00", text: "Entrega em produção." }
+      ],
+      createdAt: "2026-09-28",
+      updatedAt: "2026-10-01"
+    },
+    {
+      id: "del-6",
+      title: "Wireframes do Fluxo de Checkout & Assinatura",
+      clientId: "cli-2",
+      clientName: "Nexo Soluções Digitais",
+      projectId: "proj-2",
+      projectName: "Design de Interface Web App & Mobile Nexo",
+      status: "backlog",
+      priority: "alta",
+      coverImage: "",
+      dueDate: "2026-10-14",
+      assignee: "Nathan Antenor",
+      tags: ["UI/UX"],
+      description: "Arquitetura da jornada de pagamento, upsell e tela de confirmação de pedido.",
+      checklist: [
+        { id: "c-19", title: "Benchmark de fluxos Stripe/Pagarme", completed: false },
+        { id: "c-20", title: "Mapeamento das telas de erro e sucesso", completed: false }
+      ],
+      files: [],
+      comments: [],
+      history: [
+        { id: "h-8", date: "2026-10-01 10:00", text: "Entrega cadastrada no Backlog do projeto." }
+      ],
+      createdAt: "2026-10-01",
+      updatedAt: "2026-10-01"
+    },
+    {
+      id: "del-7",
+      title: "Manual de Uso e Aplicação da Marca (PDF Interativo)",
+      clientId: "cli-1",
+      clientName: "Studio Lumina Iluminação",
+      projectId: "proj-1",
+      projectName: "Redesign de Identidade Visual & Aplicações",
+      status: "em_revisao",
+      priority: "alta",
+      coverImage: "https://images.unsplash.com/photo-1542744094-24638eff58bb?w=600&auto=format&fit=crop&q=80",
+      dueDate: "2026-10-08",
+      assignee: "Nathan Antenor",
+      tags: ["Design", "Copywriting"],
+      description: "Manual completo com 32 páginas detalhando todas as regras de aplicação em mídias físicas e digitais.",
+      checklist: [
+        { id: "c-21", title: "Diagramação do manual no InDesign", completed: true },
+        { id: "c-22", title: "Regras de área de não interferência", completed: true },
+        { id: "c-23", title: "Revisão ortográfica e links", completed: true },
+        { id: "c-24", title: "Validação final da Laura", completed: false }
+      ],
+      files: [],
+      comments: [],
+      history: [
+        { id: "h-9", date: "2026-10-01 18:00", text: "Movido para Em revisão." }
+      ],
+      createdAt: "2026-09-22",
+      updatedAt: "2026-10-01"
+    },
+    {
+      id: "del-8",
+      title: "Vinheta Animada em Motion Graphics (5s)",
+      clientId: "cli-1",
+      clientName: "Pulse Academia & Cross",
+      projectId: "proj-3",
+      projectName: "Vídeo Institucional Comercial",
+      status: "pausado",
+      priority: "baixa",
+      coverImage: "",
+      dueDate: "2026-10-25",
+      assignee: "Nathan Antenor",
+      tags: ["Vídeo"],
+      description: "Logo sting de encerramento em loop com efeitos sonoros sintéticos.",
+      checklist: [
+        { id: "c-25", title: "Animação da logo no After Effects", completed: true },
+        { id: "c-26", title: "Efeito sonoro / Sound Design", completed: false }
+      ],
+      files: [],
+      comments: [
+        { id: "com-4", author: "Nathan Antenor", date: "2026-10-01", time: "16:00", text: "Pausado aguardando definição da nova paleta de som da Pulse." }
+      ],
+      history: [
+        { id: "h-10", date: "2026-10-01 16:00", text: "Status alterado para Pausado." }
+      ],
+      createdAt: "2026-09-27",
+      updatedAt: "2026-10-01"
     }
   ]
 };

@@ -1,8 +1,8 @@
-﻿# APP TESTE - Central Integrada de Gestão Inteligente
+# APP TESTE - Central Integrada de Gestão Inteligente
 
 ## Informações & Detalhes Completos do Sistema
 
-Este diretório contém a aplicação web completa, responsiva e de alta fidelidade para gestão inteligente de profissionais autônomos, freelancers e pequenos negócios criativos.
+Este diretório contém a aplicação web completa, responsiva e de alta fidelidade para gestão inteligente de profissionais autônomos, freelancers e pequenos negócios criativos (design, branding, audiovisual, social media, marketing e desenvolvimento).
 
 ---
 
@@ -20,10 +20,10 @@ C:\Users\Nathan\Desktop\App Easy Gen\
     ├── app.js                     # Roteador principal e gerenciador de eventos globais
     ├── state/
     │   ├── store.js               # Gerenciador de estado reativo e relacional (LocalStorage)
-    │   └── initialData.js         # Dados de demonstração completos (leads, clientes, etc.)
+    │   └── initialData.js         # Dados de demonstração completos (leads, clientes, entregas, etc.)
     ├── components/
     │   ├── Navbar.js              # Barra superior (busca, ações rápidas, notificações, tema)
-    │   ├── Sidebar.js             # Menu lateral desktop com 13 módulos
+    │   ├── Sidebar.js             # Menu lateral desktop com 14 módulos (incluindo Entregas)
     │   ├── MobileNav.js           # Barra inferior (bottom navigation) e gaveta mobile
     │   ├── QuickActionsModal.js   # Modal de ações rápidas para criação imediata
     │   ├── GlobalSearchModal.js   # Busca global com atalho Ctrl + K
@@ -31,13 +31,14 @@ C:\Users\Nathan\Desktop\App Easy Gen\
     │   ├── Modal.js               # Sistema de modais e drawers acessíveis
     │   └── Toast.js               # Notificações visuais flutuantes
     ├── views/
-    │   ├── DashboardView.js       # Visão geral, KPIs e gráficos analíticos
+    │   ├── DashboardView.js       # Visão geral, KPIs, gráficos analíticos e próximas entregas
+    │   ├── DeliveriesView.js      # Módulo Entregas: Kanban Trello-like e Lista com Drag & Drop
     │   ├── CRMView.js             # Kanban arrastável e Tabela de leads com conversão
-    │   ├── ClientsView.js         # Inteligência 360°, LTV e alertas de relacionamento
+    │   ├── ClientsView.js         # Inteligência 360°, LTV, aba Entregas e alertas de relacionamento
     │   ├── DocumentsView.js       # Central de documentos com pastas por categoria
     │   ├── ServicesView.js        # Catálogo de serviços com geração de propostas
     │   ├── ProposalsView.js       # Ciclo de propostas comerciais e exportação PDF
-    │   ├── ProjectsView.js        # Gestão de projetos por estágios e checklist de tarefas
+    │   ├── ProjectsView.js        # Gestão de projetos por estágios, cronogramas e entregas vinculadas
     │   ├── FinanceView.js         # Controle financeiro Empresa (PJ) vs Pessoal (PF)
     │   ├── AgendaView.js          # Calendário mensal e preparação Google Calendar
     │   ├── RoutineView.js         # Tarefas prioritárias e hábitos com streaks (🔥)
@@ -61,30 +62,68 @@ C:\Users\Nathan\Desktop\App Easy Gen\
   - Textos secundários: Variações de cinza neutro
 - **Tema Escuro**:
   - Fundo: Preto a ~80% de intensidade (`#18181B`)
-  - Superfícies / Cards: `#242427`
+  - Superfícies / Cards: `#242427` / `#1f1f23`
   - Destaques: Azul vibrante (`#0000FF`)
   - Textos: Branco (`#F4F4F5`)
 - **Estética**: Minimalista, limpa, espaçamento generoso, cantos sutilmente arredondados, sem gradientes pesados ou sombras excessivas.
 
 ---
 
+### 🚀 Novo Módulo: Entregas & Operações (Kanban Trello-like)
+
+O módulo **Entregas** funciona como a central operacional visual para organizar demandas, entregáveis e fluxos de produção criativa:
+- **Visualização Dupla**: Alternância com 1 clique entre **Kanban** e **Lista**.
+- **Kanban Interativo com Drag & Drop**:
+  - Colunas padrão: *Backlog*, *Em andamento*, *Em revisão*, *Aprovado*, *Entregue*, *Pausado*.
+  - Possibilidade de criar novas colunas personalizadas, renomear ou remover colunas existentes.
+  - Arraste fluido de cards entre colunas com atualização imediata do status.
+- **Cards Ricos de Alta Fidelidade**:
+  - Imagem de capa customizável.
+  - Tag de prioridade (*Baixa*, *Média*, *Alta*, *Urgente*).
+  - Etiquetas (Tags) coloridas customizáveis (ex: Design, Social Media, Vídeo, UI/UX, Copywriting, Urgente).
+  - Indicador de cliente e projeto vinculado.
+  - Checklist interativo com barra de progresso percentual dinâmica.
+  - Contadores de anexos e comentários.
+  - Alerta de prazo (destaque para atrasados e vencendo hoje).
+  - Avatar do responsável.
+  - Menu de ações rápidas no card (abrir detalhes, duplicar, excluir).
+- **Modal de Detalhes Completo**:
+  - Edição direta de título, descrição, prioridade, responsável e prazo.
+  - Checklist operacional com checkbox instantâneo, adição e remoção de tarefas.
+  - Gestão de anexos com opção de sincronizar automaticamente na **Central de Documentos**.
+  - Linha do tempo de comentários com autor e data.
+  - Histórico de auditoria com rastreamento cronológico de todas as alterações.
+  - Botão de duplicar e excluir entrega.
+- **Gerenciador de Tags**:
+  - Criação de novas tags com nome e seletor de cor HEX.
+
+---
+
 ### 🔄 Arquitetura Relacional & Conexões Automáticas
 
-1. **Lead ➔ Cliente**: Ao converter um lead no CRM, ele é promovido para aprovado e seus dados geram instantaneamente um novo Cliente na carteira com histórico preservado.
-2. **Proposta ➔ Projeto**: Propostas aprovadas geram automaticamente um novo projeto com o checklist de entregáveis pré-configurado.
-3. **Financeiro ➔ Metas & Clientes**:
+1. **Entregas ➔ Projetos**:
+   - Mover uma entrega para a coluna **Entregue** calcula automaticamente a porcentagem de conclusão do projeto vinculado (ex: 6 de 10 entregas concluídas = 60%).
+   - A modal de detalhes de qualquer Projeto exibe a seção **"Entregas do Projeto"** com barra de progresso em tempo real e listagem das demandas.
+2. **Entregas ➔ Clientes**:
+   - Cada Cliente possui no seu perfil 360° a aba **"Entregas"**, exibindo todas as demandas associadas àquele cliente com status e prioridade.
+3. **Entregas ➔ Central de Documentos**:
+   - Ao anexar arquivos a uma entrega com a opção ativada, o arquivo é imediatamente espelhado na Central de Documentos na categoria correspondente.
+4. **Entregas ➔ Dashboard**:
+   - O Dashboard exibe o card KPI da Central de Entregas e o widget **"Próximas Entregas"** em tempo real.
+5. **Lead ➔ Cliente**: Ao converter um lead no CRM, seus dados geram instantaneamente um novo Cliente na carteira com histórico preservado.
+6. **Proposta ➔ Projeto**: Propostas aprovadas geram automaticamente um novo projeto com o checklist pré-configurado.
+7. **Financeiro ➔ Metas & Clientes**:
    - Lançamentos de receita vinculados a um cliente atualizam o LTV e ticket médio do cliente em tempo real.
    - Toda receita adicionada incrementa automaticamente o progresso percentual e financeiro de metas associadas.
-4. **Documentos ➔ Central Unificada**: Arquivos anexados a clientes ou projetos aparecem automaticamente organizados na Central de Documentos.
 
 ---
 
 ### ⚡ Atalhos & Recursos Rápidos
 
-- **Ctrl + K** (ou botão de lupa): Abre a Busca Global agrupada por Clientes, Leads, Projetos, Propostas, Serviços, Documentos e Lançamentos.
-- **Botão + Ação Rápida** (ou botão flutuante FAB no mobile): Menu rápido para criar qualquer uma das 10 entidades do sistema em 1 clique.
-- **Alternar Tema**: Botão de sol/lua na barra superior ou na lateral inferior.
-- **Exportação Multiformato**: Exportação direta em PDF, Excel (XLSX) e CSV em todos os módulos principais.
+- **Ctrl + K** (ou botão de lupa): Busca Global abrangendo Clientes, Leads, Projetos, Propostas, Entregas, Serviços, Documentos e Lançamentos.
+- **Botão + Ação Rápida** (ou botão flutuante FAB no mobile): Menu rápido com opção direta para criar **Nova Entrega**, Novo Lead, Projeto, etc.
+- **Alternar Tema**: Botão de alternância claro/escuro na barra superior e lateral.
+- **Exportação Multiformato**: Exportação direta em PDF, Excel (XLSX) e CSV nos módulos principais.
 
 ---
 
@@ -92,14 +131,13 @@ C:\Users\Nathan\Desktop\App Easy Gen\
 
 1. **Servidor Local Instantâneo**:
    - Dê um duplo clique no arquivo `start.bat`.
-   - O servidor local iniciará e abrirá o navegador em `http://localhost:3000`.
+   - O servidor local nativo PowerShell iniciará e abrirá o navegador em `http://localhost:3000`.
 
 2. **Abertura Direta**:
-   - Dê dois cliques no arquivo `index.html` em qualquer navegador (Google Chrome, Microsoft Edge, Firefox, Safari).
+   - Dê dois cliques no arquivo `index.html` em qualquer navegador moderno.
 
 ---
 
-### 🌐 Repositório GitHub Conectado
+### 🔒 Dados & Armazenamento
 
-- **URL**: `https://github.com/nathanaelantenor-ship-it/easygen.git`
-- **Branch**: `main`
+Todos os dados são persistidos no navegador via `LocalStorage`. É possível reiniciar a base demonstrativa completa ou exportar dados a qualquer momento pelo módulo de **Configurações**.

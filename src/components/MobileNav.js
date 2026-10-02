@@ -1,4 +1,4 @@
-﻿import { modal } from './Modal.js';
+import { modal } from './Modal.js';
 
 export function renderMobileNav(currentModule) {
   return `
@@ -42,6 +42,7 @@ export function openMobileMenuDrawer(currentModule, onNavigate) {
     { id: 'services', label: 'Catálogo de Serviços' },
     { id: 'proposals', label: 'Propostas Comerciais' },
     { id: 'projects', label: 'Gestão de Projetos' },
+    { id: 'entregas', label: 'Entregas & Operações (Kanban)' },
     { id: 'finance', label: 'Financeiro (PJ & PF)' },
     { id: 'agenda', label: 'Agenda & Reuniões' },
     { id: 'routine', label: 'Rotina, Tarefas & Hábitos' },

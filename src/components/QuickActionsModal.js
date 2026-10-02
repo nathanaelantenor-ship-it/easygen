@@ -1,4 +1,4 @@
-﻿import { modal } from './Modal.js';
+import { modal } from './Modal.js';
 import { store } from '../state/store.js';
 import { toast } from './Toast.js';
 
@@ -34,6 +34,14 @@ export function openQuickActionsModal(onNavigate) {
         <div>
           <div class="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Novo Projeto</div>
           <div class="text-[11px] text-zinc-400">Gerenciar entregas</div>
+        </div>
+      </button>
+
+      <button data-action="delivery" class="qa-btn flex items-center gap-3 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-blue-600 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 text-left transition-all">
+        <div class="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm shrink-0">ET</div>
+        <div>
+          <div class="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Nova Entrega</div>
+          <div class="text-[11px] text-zinc-400">Demanda operacional</div>
         </div>
       </button>
 
@@ -259,6 +267,7 @@ function openQuickActionForm(action, onNavigate) {
       client: 'clients',
       proposal: 'proposals',
       project: 'projects',
+      delivery: 'entregas',
       event: 'agenda',
       document: 'documents',
       goal: 'goals'

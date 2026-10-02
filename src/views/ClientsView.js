@@ -1,4 +1,4 @@
-﻿import { store } from '../state/store.js';
+import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate } from '../utils/formatters.js';
@@ -170,6 +170,7 @@ export function openClientProfileModal(clientId, onNavigate) {
   if (!client) return;
 
   const clientProjects = state.projects.filter(p => p.clientId === client.id);
+  const clientDeliveries = (state.deliveries || []).filter(d => d.clientId === client.id);
   const clientProposals = state.proposals.filter(p => p.clientId === client.id);
   const clientTransactions = state.transactions.filter(t => t.clientId === client.id);
   const clientDocuments = state.documents.filter(d => d.clientId === client.id);
@@ -190,12 +191,13 @@ export function openClientProfileModal(clientId, onNavigate) {
       </div>
 
       <!-- Tab Buttons -->
-      <div class="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2 text-xs font-medium">
-        <button id="tab-overview" class="profile-tab px-3 py-1.5 rounded-lg bg-blue-600 text-white">Geral</button>
-        <button id="tab-projects" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">Projetos (${clientProjects.length})</button>
-        <button id="tab-proposals" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">Propostas (${clientProposals.length})</button>
-        <button id="tab-finance" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">Financeiro (${clientTransactions.length})</button>
-        <button id="tab-docs" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">Documentos (${clientDocuments.length})</button>
+      <div class="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2 text-xs font-medium overflow-x-auto">
+        <button id="tab-overview" class="profile-tab px-3 py-1.5 rounded-lg bg-blue-600 text-white shrink-0">Geral</button>
+        <button id="tab-deliveries" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 shrink-0">Entregas (${clientDeliveries.length})</button>
+        <button id="tab-projects" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 shrink-0">Projetos (${clientProjects.length})</button>
+        <button id="tab-proposals" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 shrink-0">Propostas (${clientProposals.length})</button>
+        <button id="tab-finance" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 shrink-0">Financeiro (${clientTransactions.length})</button>
+        <button id="tab-docs" class="profile-tab px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 shrink-0">Documentos (${clientDocuments.length})</button>
       </div>
 
       <!-- Tab Content Area -->
@@ -262,6 +264,37 @@ export function openClientProfileModal(clientId, onNavigate) {
           <span class="text-zinc-400 block text-[11px] mb-1">Notas & Preferências</span>
           <p class="text-zinc-700 dark:text-zinc-300">${client.notes || 'Sem observações cadastradas.'}</p>
         </div>
+      </div>
+    `;
+  };
+
+  m.panel.querySelector('#tab-deliveries').onclick = (e) => {
+    setTab(e.target);
+    tabContainer.innerHTML = `
+      <div class="space-y-2">
+        ${clientDeliveries.length === 0 ? '<p class="text-zinc-400 py-6 text-center">Nenhuma entrega cadastrada para este cliente.</p>' : clientDeliveries.map(d => {
+          const checklist = d.checklist || [];
+          const completedChecks = checklist.filter(c => c.completed).length;
+          const chkPercent = checklist.length > 0 ? Math.round((completedChecks / checklist.length) * 100) : 0;
+          return `
+            <div class="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+              <div>
+                <div class="font-semibold text-zinc-900 dark:text-zinc-100">${d.title}</div>
+                <div class="text-[11px] text-zinc-400">
+                  ${d.projectName ? `Projeto: ${d.projectName} • ` : ''}Prazo: ${d.dueDate ? d.dueDate.split('-').reverse().join('/') : 'Sem prazo'} • Checklist: ${completedChecks}/${checklist.length} (${chkPercent}%)
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
+                  d.priority === 'urgente' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400' :
+                  d.priority === 'alta' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' :
+                  'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400'
+                }">${d.priority.toUpperCase()}</span>
+                <span class="text-xs font-semibold text-blue-600 capitalize">${d.status}</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
       </div>
     `;
   };

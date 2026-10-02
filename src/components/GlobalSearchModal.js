@@ -1,4 +1,4 @@
-﻿import { store } from '../state/store.js';
+import { store } from '../state/store.js';
 import { modal } from './Modal.js';
 import { formatCurrency } from '../utils/formatters.js';
 
@@ -86,6 +86,7 @@ export function openGlobalSearch(onNavigate) {
           propostas: 'proposals',
           servicos: 'services',
           documentos: 'documents',
+          entregas: 'entregas',
           tarefas: 'routine',
           eventos: 'agenda',
           financeiro: 'finance'

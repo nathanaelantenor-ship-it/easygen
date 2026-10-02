@@ -1,4 +1,4 @@
-﻿import { store } from './state/store.js';
+import { store } from './state/store.js';
 import { renderNavbar } from './components/Navbar.js';
 import { renderSidebar } from './components/Sidebar.js';
 import { renderMobileNav, openMobileMenuDrawer } from './components/MobileNav.js';
@@ -13,6 +13,7 @@ import { renderDocumentsView } from './views/DocumentsView.js';
 import { renderServicesView } from './views/ServicesView.js';
 import { renderProposalsView } from './views/ProposalsView.js';
 import { renderProjectsView } from './views/ProjectsView.js';
+import { renderDeliveriesView } from './views/DeliveriesView.js';
 import { renderFinanceView } from './views/FinanceView.js';
 import { renderAgendaView } from './views/AgendaView.js';
 import { renderRoutineView } from './views/RoutineView.js';
@@ -28,6 +29,7 @@ const viewTitles = {
   services: 'Catálogo de Serviços',
   proposals: 'Propostas Comerciais',
   projects: 'Gestão de Projetos',
+  entregas: 'Entregas & Operações',
   finance: 'Controle Financeiro',
   agenda: 'Agenda & Reuniões',
   routine: 'Rotina & Produtividade',
@@ -44,6 +46,7 @@ const viewRenderers = {
   services: renderServicesView,
   proposals: renderProposalsView,
   projects: renderProjectsView,
+  entregas: renderDeliveriesView,
   finance: renderFinanceView,
   agenda: renderAgendaView,
   routine: renderRoutineView,
