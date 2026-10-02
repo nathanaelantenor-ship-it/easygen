@@ -16,6 +16,13 @@ class Store {
         if (!parsed.deliveries) parsed.deliveries = JSON.parse(JSON.stringify(initialData.deliveries || []));
         if (!parsed.deliveryColumns) parsed.deliveryColumns = JSON.parse(JSON.stringify(initialData.deliveryColumns || []));
         if (!parsed.deliveryTags) parsed.deliveryTags = JSON.parse(JSON.stringify(initialData.deliveryTags || []));
+        if (!parsed.inbox) parsed.inbox = JSON.parse(JSON.stringify(initialData.inbox || []));
+        if (parsed.profile) {
+          if (parsed.profile.xp === undefined) parsed.profile.xp = initialData.profile.xp || 1240;
+          if (parsed.profile.level === undefined) parsed.profile.level = initialData.profile.level || 12;
+          if (parsed.profile.xpEnabled === undefined) parsed.profile.xpEnabled = true;
+          if (!parsed.profile.dashboardWidgets) parsed.profile.dashboardWidgets = { ...initialData.profile.dashboardWidgets };
+        }
         return parsed;
       }
     } catch (e) {
@@ -75,7 +82,8 @@ class Store {
       notifications: [],
       deliveries: [],
       deliveryColumns: [...(initialData.deliveryColumns || [])],
-      deliveryTags: [...(initialData.deliveryTags || [])]
+      deliveryTags: [...(initialData.deliveryTags || [])],
+      inbox: []
     };
     this.saveState();
   }
@@ -977,6 +985,372 @@ class Store {
     };
   }
 
+  // --- XP & GAMIFICAÇÃO DISCRETA (V2) ---
+  addXP(amount, reason = '') {
+    if (!this.state.profile) return;
+    if (this.state.profile.xpEnabled === false) return;
+    const oldLevel = Math.floor((this.state.profile.xp || 0) / 100) + 1;
+    this.state.profile.xp = (this.state.profile.xp || 0) + amount;
+    const newLevel = Math.floor(this.state.profile.xp / 100) + 1;
+    this.state.profile.level = newLevel;
+
+    if (newLevel > oldLevel) {
+      this.addNotification({
+        title: '🎉 Nível Aumentado!',
+        message: `Parabéns! Você alcançou o Nível ${newLevel} no APP TESTE.`,
+        type: 'success',
+        link: 'dashboard'
+      });
+    }
+    this.saveState();
+  }
+
+  toggleXPEnabled() {
+    if (!this.state.profile) return;
+    this.state.profile.xpEnabled = !this.state.profile.xpEnabled;
+    this.saveState();
+  }
+
+  // --- ITENS QUE PRECISAM DE ATENÇÃO (V2) ---
+  calculateAttentionItems() {
+    const items = [];
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // 1. Projetos atrasados
+    const activeProjects = (this.state.projects || []).filter(p => p.stage !== 'entrega' && p.stage !== 'pago' && p.stage !== 'cancelado');
+    activeProjects.forEach(p => {
+      if (p.deadlineDate && p.deadlineDate < todayStr) {
+        const diffDays = Math.ceil((today - new Date(p.deadlineDate)) / (1000 * 60 * 60 * 24));
+        items.push({
+          id: `att-proj-${p.id}`,
+          type: 'project',
+          severity: 'high',
+          badge: 'Projeto Atrasado',
+          badgeColor: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border-rose-200 dark:border-rose-900',
+          title: p.title,
+          subtitle: `${p.clientName || 'Cliente'} • ${diffDays} ${diffDays === 1 ? 'dia atrasado' : 'dias atrasado'}`,
+          actionLabel: 'ABRIR PROJETO',
+          link: 'projects',
+          targetId: p.id
+        });
+      }
+    });
+
+    // 2. Propostas sem resposta há mais de 3 dias
+    const openProposals = (this.state.proposals || []).filter(p => p.status === 'enviada' || p.status === 'negociacao');
+    openProposals.forEach(p => {
+      if (p.createdAt) {
+        const diffDays = Math.floor((today - new Date(p.createdAt)) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 3) {
+          const valFormatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.finalValue || p.value || 0);
+          items.push({
+            id: `att-prop-${p.id}`,
+            type: 'proposal',
+            severity: 'medium',
+            badge: 'Proposta Sem Resposta',
+            badgeColor: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border-amber-200 dark:border-amber-900',
+            title: `${p.clientName || 'Cliente'} (${p.number})`,
+            subtitle: `${valFormatted} • Enviada há ${diffDays} dias`,
+            actionLabel: 'ABRIR PROPOSTA',
+            link: 'proposals',
+            targetId: p.id
+          });
+        }
+      }
+    });
+
+    // 3. Pagamentos próximos ou atrasados
+    const pendingTxs = (this.state.transactions || []).filter(t => t.status !== 'paid' && t.type === 'income');
+    pendingTxs.forEach(t => {
+      const valFormatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount || 0);
+      const clientName = t.clientName || (t.clientId ? (this.state.clients.find(c => c.id === t.clientId)?.name) : 'Recebimento');
+      if (t.dueDate < todayStr) {
+        const diffDays = Math.ceil((today - new Date(t.dueDate)) / (1000 * 60 * 60 * 24));
+        items.push({
+          id: `att-tx-overdue-${t.id}`,
+          type: 'finance',
+          severity: 'high',
+          badge: 'Recebimento Atrasado',
+          badgeColor: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border-rose-200 dark:border-rose-900',
+          title: clientName,
+          subtitle: `${valFormatted} • Vencido há ${diffDays} ${diffDays === 1 ? 'dia' : 'dias'}`,
+          actionLabel: 'VER FINANCEIRO',
+          link: 'finance',
+          targetId: t.id
+        });
+      } else {
+        const diffDays = Math.ceil((new Date(t.dueDate) - today) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 5) {
+          const dueFormatted = t.dueDate.split('-').reverse().slice(0, 2).join('/');
+          items.push({
+            id: `att-tx-soon-${t.id}`,
+            type: 'finance',
+            severity: 'low',
+            badge: 'Pagamento Próximo',
+            badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border-blue-200 dark:border-blue-900',
+            title: clientName,
+            subtitle: `${valFormatted} • Vencimento em ${dueFormatted}`,
+            actionLabel: 'VER FINANCEIRO',
+            link: 'finance',
+            targetId: t.id
+          });
+        }
+      }
+    });
+
+    // 4. Clientes inativos (> 60 dias sem novo serviço)
+    const activeClients = (this.state.clients || []).filter(c => c.status === 'active' || c.clientType === 'mensal');
+    activeClients.forEach(c => {
+      const refDate = c.lastServiceDate || c.entryDate;
+      if (refDate) {
+        const diffDays = Math.floor((today - new Date(refDate)) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 60) {
+          items.push({
+            id: `att-cli-${c.id}`,
+            type: 'client',
+            severity: 'medium',
+            badge: 'Cliente Inativo',
+            badgeColor: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700',
+            title: c.name,
+            subtitle: `${diffDays} dias sem novo serviço`,
+            actionLabel: 'VER CLIENTE',
+            link: 'clients',
+            targetId: c.id
+          });
+        }
+      }
+    });
+
+    return items;
+  }
+
+  // --- SAÚDE DO NEGÓCIO (V2) ---
+  calculateBusinessHealth() {
+    const leads = this.state.leads || [];
+    const proposals = this.state.proposals || [];
+    const projects = this.state.projects || [];
+    const clients = this.state.clients || [];
+    const transactions = this.state.transactions || [];
+
+    // 1. Comercial Score
+    const leadsInFunnel = leads.filter(l => l.status !== 'aprovado' && l.status !== 'cancelado').length;
+    const leadsConverted = leads.filter(l => l.status === 'aprovado').length;
+    const conversionRate = leads.length > 0 ? (leadsConverted / leads.length) * 100 : 0;
+    let commercialScore = 50;
+    if (leadsInFunnel >= 3) commercialScore += 20;
+    if (conversionRate >= 20) commercialScore += 20;
+    if (proposals.some(p => p.status === 'negociacao')) commercialScore += 10;
+    commercialScore = Math.min(100, Math.max(20, Math.round(commercialScore)));
+
+    const openPipelineVal = proposals.filter(p => p.status === 'enviada' || p.status === 'negociacao').reduce((acc, p) => acc + (p.finalValue || p.value || 0), 0);
+    const pipeFormatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(openPipelineVal);
+    const commercialDiagnosis = `Pipeline com ${pipeFormatted} em negociação e taxa de conversão de ${Math.round(conversionRate)}%.`;
+
+    // 2. Financeiro Score
+    const businessTxs = transactions.filter(t => t.scope === 'business');
+    const income = businessTxs.filter(t => t.type === 'income').reduce((acc, t) => acc + (t.amount || 0), 0);
+    const expense = businessTxs.filter(t => t.type === 'expense').reduce((acc, t) => acc + (t.amount || 0), 0);
+    const overdueCount = transactions.filter(t => t.status !== 'paid' && t.dueDate < new Date().toISOString().split('T')[0]).length;
+    const margin = income > 0 ? Math.round(((income - expense) / income) * 100) : 0;
+
+    let financeScore = 60;
+    if (income > expense) financeScore += 20;
+    if (margin >= 40) financeScore += 15;
+    if (overdueCount > 0) financeScore -= (overdueCount * 10);
+    financeScore = Math.min(100, Math.max(15, Math.round(financeScore)));
+
+    let financeDiagnosis = `Margem operacional de ${margin}% e saldo positivo.`;
+    if (overdueCount > 0) {
+      financeDiagnosis = `Indicador reduzido porque existem ${overdueCount} ${overdueCount === 1 ? 'conta vencida' : 'contas vencidas'}. Margem de ${margin}%.`;
+    }
+
+    // 3. Projetos Score
+    const activeProjects = projects.filter(p => p.stage !== 'entrega' && p.stage !== 'pago' && p.stage !== 'cancelado');
+    const overdueProjects = activeProjects.filter(p => p.deadlineDate && p.deadlineDate < new Date().toISOString().split('T')[0]);
+    let projectsScore = 75;
+    if (overdueProjects.length === 0) projectsScore += 20;
+    else projectsScore -= (overdueProjects.length * 15);
+    projectsScore = Math.min(100, Math.max(20, Math.round(projectsScore)));
+
+    const projectsDiagnosis = overdueProjects.length === 0 
+      ? `Todos os ${activeProjects.length} projetos ativos estão dentro do cronograma previsto.` 
+      : `${overdueProjects.length} ${overdueProjects.length === 1 ? 'projeto atrasado' : 'projetos atrasados'} requerem alinhamento imediato.`;
+
+    // 4. Relacionamento Score
+    const totalClients = clients.length;
+    const inactiveClients = clients.filter(c => {
+      const ref = c.lastServiceDate || c.entryDate;
+      if (!ref) return false;
+      const days = Math.floor((new Date() - new Date(ref)) / (1000 * 60 * 60 * 24));
+      return days >= 60;
+    }).length;
+    const activeRatio = totalClients > 0 ? ((totalClients - inactiveClients) / totalClients) * 100 : 80;
+    let relationshipScore = Math.min(100, Math.max(30, Math.round(activeRatio)));
+    const relationshipDiagnosis = `${Math.round(activeRatio)}% da base de clientes com contato e serviço recente nos últimos 60 dias.`;
+
+    const overallScore = Math.round((commercialScore + financeScore + projectsScore + relationshipScore) / 4);
+
+    return {
+      overall: overallScore,
+      commercial: { score: commercialScore, diagnosis: commercialDiagnosis },
+      finance: { score: financeScore, diagnosis: financeDiagnosis },
+      projects: { score: projectsScore, diagnosis: projectsDiagnosis },
+      relationship: { score: relationshipScore, diagnosis: relationshipDiagnosis }
+    };
+  }
+
+  // --- INBOX / CAPTURA RÁPIDA (V2) ---
+  addInboxItem(text, suggestedType = 'task') {
+    if (!this.state.inbox) this.state.inbox = [];
+    const item = {
+      id: 'inb-' + Date.now(),
+      text,
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      status: 'pending',
+      suggestedType
+    };
+    this.state.inbox.unshift(item);
+    this.addXP(10, 'Demanda rápida capturada no Inbox');
+    this.saveState();
+    return item;
+  }
+
+  convertInboxItem(id, targetType, extraData = {}) {
+    if (!this.state.inbox) return;
+    const item = this.state.inbox.find(i => i.id === id);
+    if (!item) return;
+
+    if (targetType === 'task') {
+      this.addTask({ title: item.text, ...extraData });
+    } else if (targetType === 'delivery') {
+      this.addDelivery({ title: item.text, ...extraData });
+    } else if (targetType === 'project') {
+      this.addProject({ title: item.text, ...extraData });
+    } else if (targetType === 'event') {
+      this.addEvent({ title: item.text, ...extraData });
+    } else if (targetType === 'lead') {
+      this.addLead({ name: item.text, notes: 'Criado a partir do Inbox', ...extraData });
+    }
+
+    item.status = 'converted';
+    item.convertedTo = targetType;
+    item.convertedAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    this.addXP(25, `Item do Inbox transformado em ${targetType}`);
+    this.saveState();
+  }
+
+  deleteInboxItem(id) {
+    if (!this.state.inbox) return;
+    this.state.inbox = this.state.inbox.filter(i => i.id !== id);
+    this.saveState();
+  }
+
+  // --- ATIVIDADES NO CRM (V2) ---
+  addLeadActivity(leadId, activity) {
+    const lead = this.state.leads.find(l => l.id === leadId);
+    if (!lead) return;
+    if (!lead.activities) lead.activities = [];
+
+    const newActivity = {
+      id: 'act-' + Date.now(),
+      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      user: this.state.profile.name,
+      ...activity
+    };
+    lead.activities.unshift(newActivity);
+    lead.lastContact = new Date().toISOString().split('T')[0];
+
+    this.addXP(15, 'Atividade comercial registrada');
+    this.saveState();
+    return newActivity;
+  }
+
+  // --- PARCELAMENTOS FINANCEIROS (V2) ---
+  addTransactionWithInstallments(txData, installmentsCount = 1) {
+    if (installmentsCount <= 1) {
+      return this.addTransaction(txData);
+    }
+
+    const totalAmount = parseFloat(txData.amount) || 0;
+    const installmentValue = Math.round((totalAmount / installmentsCount) * 100) / 100;
+    const baseDate = new Date(txData.dueDate || txData.date || Date.now());
+    const groupId = 'inst-' + Date.now();
+
+    const createdList = [];
+    for (let i = 1; i <= installmentsCount; i++) {
+      const curDate = new Date(baseDate);
+      curDate.setMonth(curDate.getMonth() + (i - 1));
+      const curDateStr = curDate.toISOString().split('T')[0];
+
+      const installmentTx = {
+        ...txData,
+        id: `tx-${Date.now()}-${i}`,
+        title: `${txData.title} (${i}/${installmentsCount})`,
+        amount: installmentValue,
+        dueDate: curDateStr,
+        date: i === 1 ? (txData.date || curDateStr) : curDateStr,
+        status: i === 1 && txData.status === 'paid' ? 'paid' : 'pending',
+        installmentGroup: groupId,
+        installment: { current: i, total: installmentsCount }
+      };
+
+      this.state.transactions.unshift(installmentTx);
+      createdList.push(installmentTx);
+    }
+
+    this.addXP(20, `Lançamento parcelado em ${installmentsCount}x gerado`);
+    this.saveState();
+    return createdList;
+  }
+
+  // --- MARCAR COMO PAGO (V2) ---
+  markTransactionAsPaid(id) {
+    const tx = this.state.transactions.find(t => t.id === id);
+    if (!tx) return;
+
+    tx.status = 'paid';
+    tx.paidDate = new Date().toISOString().split('T')[0];
+
+    // Atualiza receita do cliente
+    if (tx.type === 'income' && tx.clientId) {
+      const client = this.state.clients.find(c => c.id === tx.clientId);
+      if (client) {
+        client.totalGenerated = (client.totalGenerated || 0) + (tx.amount || 0);
+        if (client.projectsCount > 0) {
+          client.averageTicket = Math.round(client.totalGenerated / client.projectsCount);
+        }
+      }
+    }
+
+    // Atualiza metas relacionadas
+    if (tx.type === 'income') {
+      const relatedGoals = this.state.goals.filter(g =>
+        g.scope === tx.scope && (g.linkedCategory === tx.category || !g.linkedCategory || g.category === 'Receita')
+      );
+      relatedGoals.forEach(g => {
+        g.currentValue = (g.currentValue || 0) + (tx.amount || 0);
+      });
+    }
+
+    this.addNotification({
+      title: 'Pagamento Confirmado',
+      message: `Recebimento de '${tx.title}' no valor de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(tx.amount || 0)} foi baixado.`,
+      type: 'success',
+      link: 'finance'
+    });
+
+    this.addXP(30, 'Pagamento confirmado e baixado');
+    this.saveState();
+  }
+
+  // --- CONFIGURAÇÃO DE WIDGETS DO DASHBOARD (V2) ---
+  updateDashboardWidgets(widgets) {
+    if (!this.state.profile) return;
+    this.state.profile.dashboardWidgets = { ...this.state.profile.dashboardWidgets, ...widgets };
+    this.saveState();
+  }
+
   searchAll(query) {
     if (!query || query.trim() === '') return {};
     const q = query.toLowerCase().trim();
@@ -991,7 +1365,8 @@ class Store {
       documentos: this.state.documents.filter(d => (d.name && d.name.toLowerCase().includes(q)) || (d.category && d.category.toLowerCase().includes(q))),
       tarefas: this.state.tasks.filter(t => t.title && t.title.toLowerCase().includes(q)),
       eventos: this.state.events.filter(e => (e.title && e.title.toLowerCase().includes(q)) || (e.location && e.location.toLowerCase().includes(q))),
-      financeiro: this.state.transactions.filter(t => (t.title && t.title.toLowerCase().includes(q)) || (t.category && t.category.toLowerCase().includes(q)))
+      financeiro: this.state.transactions.filter(t => (t.title && t.title.toLowerCase().includes(q)) || (t.category && t.category.toLowerCase().includes(q))),
+      inbox: (this.state.inbox || []).filter(i => i.text && i.text.toLowerCase().includes(q))
     };
   }
 }

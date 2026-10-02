@@ -11,7 +11,21 @@ export const initialData = {
     address: "Av. Paulista, 1000 - Bela Vista, São Paulo - SP",
     currency: "BRL",
     theme: "light",
-    dateFormat: "DD/MM/YYYY"
+    dateFormat: "DD/MM/YYYY",
+    xp: 1240,
+    level: 12,
+    xpEnabled: true,
+    dashboardWidgets: {
+      attention: true,
+      finance: true,
+      cashflow: true,
+      commercial: true,
+      health: true,
+      projects: true,
+      deliveries: true,
+      goals: true,
+      routine: true
+    }
   },
   categories: [
     { id: "cat-1", name: "Serviços & Projetos", icon: "briefcase", color: "#0000FF", type: "business", nature: "income" },
@@ -1293,6 +1307,36 @@ export const initialData = {
       ],
       createdAt: "2026-09-27",
       updatedAt: "2026-10-01"
+    }
+  ],
+  inbox: [
+    {
+      id: "inb-1",
+      text: "Enviar identidade visual do IBMR amanhã até às 15h para validação do comitê",
+      createdAt: "2026-10-02 09:30",
+      status: "pending",
+      suggestedType: "delivery"
+    },
+    {
+      id: "inb-2",
+      text: "Ligar para Camila do Estúdio Aurora sobre alinhamento de contrato de branding",
+      createdAt: "2026-10-02 10:15",
+      status: "pending",
+      suggestedType: "task"
+    },
+    {
+      id: "inb-3",
+      text: "Agendar call com Juliana sobre checkout Shopify e integrações de e-mail marketing",
+      createdAt: "2026-10-02 11:00",
+      status: "pending",
+      suggestedType: "event"
+    },
+    {
+      id: "inb-4",
+      text: "Ideia: Criar pacote de Design System Express para startups em estágio inicial",
+      createdAt: "2026-10-02 11:45",
+      status: "pending",
+      suggestedType: "note"
     }
   ]
 };
