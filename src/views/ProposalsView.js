@@ -1,4 +1,4 @@
-﻿import { store } from '../state/store.js';
+import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
@@ -252,15 +252,20 @@ export function openProposalDetailsModal(propId, onNavigate, onRefresh) {
           </select>
         </div>
 
-        <div class="flex items-center gap-2">
-          <button id="prop-pdf-btn" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5">
-            <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-            <span>Gerar PDF / Imprimir</span>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button id="prop-whatsapp-btn" class="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/></svg>
+            <span>Enviar WhatsApp</span>
           </button>
 
-          <button id="prop-convert-proj-btn" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs flex items-center gap-1.5">
+          <button id="prop-pdf-btn" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+            <span>PDF</span>
+          </button>
+
+          <button id="prop-convert-proj-btn" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs flex items-center gap-1.5">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            <span>Aprovar & Criar Projeto</span>
+            <span>${prop.status === 'aprovada' ? 'Criar Projeto Vinculado' : 'Aprovar & Iniciar Projeto (+30 XP)'}</span>
           </button>
         </div>
       </div>
@@ -275,15 +280,41 @@ export function openProposalDetailsModal(propId, onNavigate, onRefresh) {
 
   // Change Status
   m.panel.querySelector('#prop-status-select').onchange = (e) => {
-    store.updateProposal(prop.id, { status: e.target.value });
-    toast.success(`Status alterado para ${e.target.value.toUpperCase()}`);
+    const newStatus = e.target.value;
+    store.updateProposal(prop.id, { status: newStatus });
+    if (newStatus === 'aprovada') {
+      store.addXP(25, `Proposta ${prop.number} aprovada`);
+    }
+    toast.success(`Status alterado para ${newStatus.toUpperCase()}`);
     if (onRefresh) onRefresh();
   };
 
+  // WhatsApp Share
+  const waBtn = m.panel.querySelector('#prop-whatsapp-btn');
+  if (waBtn) {
+    waBtn.onclick = () => {
+      const client = store.getState().clients.find(c => c.id === prop.clientId);
+      const cleanPhone = client ? (client.whatsapp || client.phone || '').replace(/\D/g, '') : '';
+      const textMsg = `Olá ${prop.clientName}! Segue a proposta comercial ${prop.number} para o serviço de ${prop.serviceName}.\nInvestimento: ${formatCurrency(prop.finalValue || prop.value)}\nPrazo de entrega: ${prop.deadline}\nValidade: ${formatDate(prop.validity)}\n\nFico à disposição para esclarecer dúvidas e alinharmos o início do projeto!`;
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(textMsg).then(() => {
+        toast.info('Texto da proposta copiado para a área de transferência!');
+      }).catch(() => {});
+
+      if (cleanPhone) {
+        window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(textMsg)}`, '_blank');
+      } else {
+        window.open(`https://wa.me/?text=${encodeURIComponent(textMsg)}`, '_blank');
+      }
+    };
+  }
+
   // Convert to Project
   m.panel.querySelector('#prop-convert-proj-btn').onclick = () => {
-    const proj = store.approveProposalAndCreateProject(prop.id);
-    toast.success(`Proposta aprovada e Projeto '${proj.title}' criado!`);
+    const newProj = store.approveProposalAndCreateProject(prop.id);
+    store.addXP(30, `Projeto criado a partir de proposta aprovada`);
+    toast.success(`Proposta aprovada e Projeto '${newProj.title}' criado com sucesso! (+30 XP)`);
     m.close();
     if (onNavigate) onNavigate('projects');
   };
