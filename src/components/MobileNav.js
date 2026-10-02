@@ -1,33 +1,45 @@
 import { modal } from './Modal.js';
+import { store } from '../state/store.js';
 
 export function renderMobileNav(currentModule) {
+  const pendingInbox = (store.getState().inbox || []).filter(i => i.status === 'pending').length;
+
   return `
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-around px-2 z-40">
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-around px-2 z-40 select-none">
+      <!-- 1. Início -->
       <button data-nav="dashboard" class="flex flex-col items-center justify-center w-14 h-full text-[10px] font-medium transition-colors ${currentModule === 'dashboard' ? 'text-blue-600 font-bold' : 'text-zinc-500'}">
         <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
         <span>Início</span>
       </button>
 
-      <button data-nav="crm" class="flex flex-col items-center justify-center w-14 h-full text-[10px] font-medium transition-colors ${currentModule === 'crm' ? 'text-blue-600 font-bold' : 'text-zinc-500'}">
-        <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-        <span>CRM</span>
+      <!-- 2. Inbox -->
+      <button data-nav="inbox" class="relative flex flex-col items-center justify-center w-14 h-full text-[10px] font-medium transition-colors ${currentModule === 'inbox' ? 'text-blue-600 font-bold' : 'text-zinc-500'}">
+        <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+        <span>Inbox</span>
+        ${pendingInbox > 0 ? `
+          <span class="absolute top-1.5 right-2 w-4 h-4 bg-blue-600 text-white rounded-full text-[9px] font-bold flex items-center justify-center">
+            ${pendingInbox}
+          </span>
+        ` : ''}
       </button>
 
-      <!-- Center Floating Quick Action Button -->
+      <!-- 3. Center Floating Quick Action Button -->
       <div class="relative -top-4 flex items-center justify-center">
-        <button id="mobile-fab-btn" class="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform ring-4 ring-white dark:ring-zinc-900">
+        <button id="mobile-fab-btn" class="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform ring-4 ring-white dark:ring-zinc-900 cursor-pointer">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
         </button>
       </div>
 
-      <button data-nav="projects" class="flex flex-col items-center justify-center w-14 h-full text-[10px] font-medium transition-colors ${currentModule === 'projects' ? 'text-blue-600 font-bold' : 'text-zinc-500'}">
-        <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-        <span>Projetos</span>
+      <!-- 4. Entregas -->
+      <button data-nav="entregas" class="flex flex-col items-center justify-center w-14 h-full text-[10px] font-medium transition-colors ${currentModule === 'entregas' ? 'text-blue-600 font-bold' : 'text-zinc-500'}">
+        <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+        <span>Entregas</span>
       </button>
 
-      <button data-nav="finance" class="flex flex-col items-center justify-center w-14 h-full text-[10px] font-medium transition-colors ${currentModule === 'finance' ? 'text-blue-600 font-bold' : 'text-zinc-500'}">
-        <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <span>Financeiro</span>
+      <!-- 5. Mais -->
+      <button id="mobile-more-btn" class="flex flex-col items-center justify-center w-14 h-full text-[10px] font-medium transition-colors text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200">
+        <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <span>Mais</span>
       </button>
     </nav>
   `;

@@ -154,9 +154,12 @@ export function initApp() {
     const notifBtn = document.getElementById('nav-notifications-btn');
     if (notifBtn) notifBtn.onclick = () => openNotificationsDrawer(navigate);
 
-    // Mobile Hamburger
+    // Mobile Hamburger & Bottom Nav More
     const menuBtn = document.getElementById('mobile-menu-btn');
     if (menuBtn) menuBtn.onclick = () => openMobileMenuDrawer(currentModule, navigate);
+
+    const mobileMoreBtn = document.getElementById('mobile-more-btn');
+    if (mobileMoreBtn) mobileMoreBtn.onclick = () => openMobileMenuDrawer(currentModule, navigate);
 
     // Theme toggles
     const navThemeBtn = document.getElementById('nav-theme-toggle');

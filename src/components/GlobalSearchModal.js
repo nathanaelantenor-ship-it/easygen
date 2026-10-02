@@ -89,7 +89,8 @@ export function openGlobalSearch(onNavigate) {
           entregas: 'entregas',
           tarefas: 'routine',
           eventos: 'agenda',
-          financeiro: 'finance'
+          financeiro: 'finance',
+          inbox: 'inbox'
         };
         searchModal.close();
         if (onNavigate && mapping[mod]) {
