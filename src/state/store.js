@@ -1266,6 +1266,27 @@ class Store {
     return newActivity;
   }
 
+  // --- ATIVIDADES / HISTÓRICO DO CLIENTE 360 (V2) ---
+  addClientActivity(clientId, activity) {
+    const client = this.state.clients.find(c => c.id === clientId);
+    if (!client) return;
+    if (!client.activities) client.activities = [];
+
+    const newActivity = {
+      id: 'cact-' + Date.now(),
+      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      user: this.state.profile ? this.state.profile.name : 'Nathan Antenor',
+      ...activity
+    };
+    client.activities.unshift(newActivity);
+    client.lastContactDate = new Date().toISOString().split('T')[0];
+
+    this.addXP(15, 'Interação com cliente registrada');
+    this.saveState();
+    return newActivity;
+  }
+
+
   // --- PARCELAMENTOS FINANCEIROS (V2) ---
   addTransactionWithInstallments(txData, installmentsCount = 1) {
     if (installmentsCount <= 1) {
