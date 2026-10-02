@@ -1,4 +1,4 @@
-﻿export function formatCurrency(value) {
+export function formatCurrency(value) {
   const num = typeof value === 'number' ? value : parseFloat(value) || 0;
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -10,7 +10,7 @@ export function formatDate(dateStr) {
   if (!dateStr) return '-';
   const parts = dateStr.split('-');
   if (parts.length === 3) {
-    return ${parts[2]}//;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
   }
   return dateStr;
 }
@@ -44,5 +44,5 @@ export function getStatusBadge(status) {
   };
 
   const item = map[status] || { label: status || 'Indefinido', bg: 'bg-zinc-100 text-zinc-600 border-zinc-200' };
-  return <span class=\"inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border \"></span>;
+  return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${item.bg}">${item.label}</span>`;
 }

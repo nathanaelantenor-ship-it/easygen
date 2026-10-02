@@ -101,7 +101,7 @@ class Store {
     this.state.leads.unshift(newLead);
     this.addNotification({
       title: 'Novo Lead Criado',
-      message: ${newLead.name} () cadastrado no funil.,
+      message: `${newLead.name} (${newLead.company || ''}) cadastrado no funil.`,
       type: 'info',
       link: 'crm'
     });
@@ -142,7 +142,7 @@ class Store {
       entryDate: new Date().toISOString().split('T')[0],
       clientType: 'pontual',
       status: 'active',
-      notes: Convertido de Lead em . Notas anteriores: ,
+      notes: `Convertido de Lead em ${new Date().toLocaleDateString('pt-BR')}. Notas anteriores: ${lead.notes || 'Nenhuma'}`,
       totalGenerated: 0,
       projectsCount: 0,
       averageTicket: 0,
@@ -155,7 +155,7 @@ class Store {
 
     this.addNotification({
       title: 'Lead Convertido em Cliente!',
-      message: ${newClient.name} foi adicionado à carteira de clientes ativos.,
+      message: `${newClient.name} foi adicionado à carteira de clientes ativos.`,
       type: 'success',
       link: 'clients'
     });
@@ -179,7 +179,7 @@ class Store {
     this.state.clients.unshift(newClient);
     this.addNotification({
       title: 'Novo Cliente Cadastrado',
-      message: ${newClient.name} foi cadastrado com sucesso.,
+      message: `${newClient.name} foi cadastrado com sucesso.`,
       type: 'info',
       link: 'clients'
     });
@@ -230,7 +230,7 @@ class Store {
     const year = new Date().getFullYear();
     const newProposal = {
       id: 'prop-' + Date.now(),
-      number: PROP--,
+      number: `PROP-${year}-${String(count).padStart(3, '0')}`,
       createdAt: new Date().toISOString().split('T')[0],
       status: 'rascunho',
       discount: 0,
@@ -240,7 +240,7 @@ class Store {
     this.state.proposals.unshift(newProposal);
     this.addNotification({
       title: 'Nova Proposta Gerada',
-      message: Proposta  criada para .,
+      message: `Proposta ${newProposal.number} criada para ${newProposal.clientName || 'cliente'}.`,
       type: 'info',
       link: 'proposals'
     });
@@ -272,7 +272,7 @@ class Store {
     // Criação automática do projeto relacionado
     const newProject = {
       id: 'proj-' + Date.now(),
-      title: ${prop.serviceName} - ,
+      title: `${prop.serviceName} - ${prop.clientName || 'Cliente'}`,
       clientId: prop.clientId || null,
       clientName: prop.clientName,
       serviceId: prop.serviceId || null,
@@ -283,9 +283,9 @@ class Store {
       startDate: new Date().toISOString().split('T')[0],
       deadlineDate: new Date(Date.now() + 20 * 86400000).toISOString().split('T')[0],
       responsible: this.state.profile.name,
-      notes: Gerado automaticamente a partir da proposta . Observações: ,
+      notes: `Gerado automaticamente a partir da proposta ${prop.number}. Observações: ${prop.notes || ''}`,
       tasks: (prop.deliverables || ['Alinhamento de briefing', 'Execução', 'Entrega e validação']).map((d, i) => ({
-        id: pt--,
+        id: `pt-${Date.now()}-${i}`,
         title: typeof d === 'string' ? d : d.title,
         completed: false
       }))
@@ -304,7 +304,7 @@ class Store {
 
     this.addNotification({
       title: 'Proposta Aprovada & Projeto Criado!',
-      message: A proposta  foi aprovada e gerou o projeto ''.,
+      message: `A proposta ${prop.number} foi aprovada e gerou o projeto '${newProject.title}'.`,
       type: 'success',
       link: 'projects'
     });
@@ -335,7 +335,7 @@ class Store {
 
     this.addNotification({
       title: 'Novo Projeto Iniciado',
-      message: Projeto '' criado.,
+      message: `Projeto '${newProject.title}' criado.`,
       type: 'info',
       link: 'projects'
     });

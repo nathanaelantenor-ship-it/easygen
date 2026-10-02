@@ -1,12 +1,12 @@
-﻿export function exportToCSV(filename, rows, headers) {
+export function exportToCSV(filename, rows, headers) {
   let csvContent = '\uFEFF'; // UTF-8 BOM para acentos corretos no Excel
   if (headers && headers.length > 0) {
-    csvContent += headers.map(h => \"\").join(';') + '\r\n';
+    csvContent += headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(';') + '\r\n';
   }
   rows.forEach(row => {
     const line = row.map(cell => {
       const val = cell === null || cell === undefined ? '' : String(cell);
-      return \"\";
+      return `"${val.replace(/"/g, '""')}"`;
     }).join(';');
     csvContent += line + '\r\n';
   });
@@ -15,7 +15,7 @@
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', ${filename}.csv);
+  link.setAttribute('download', `${filename}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -27,7 +27,7 @@ export function exportToExcel(filename, rows, headers) {
     const ws = window.XLSX.utils.aoa_to_sheet(data);
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, 'Dados');
-    window.XLSX.writeFile(wb, ${filename}.xlsx);
+    window.XLSX.writeFile(wb, `${filename}.xlsx`);
   } else {
     exportToCSV(filename, rows, headers);
   }
@@ -47,7 +47,7 @@ export function exportToPDF(filename, title, headers, rows) {
     doc.setTextColor(60, 60, 60);
     doc.text(title, 14, 26);
     doc.setFontSize(9);
-    doc.text(Gerado em:  às , 14, 32);
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, 14, 32);
 
     if (doc.autoTable) {
       doc.autoTable({
@@ -59,7 +59,7 @@ export function exportToPDF(filename, title, headers, rows) {
         styles: { fontSize: 9, cellPadding: 3 }
       });
     }
-    doc.save(${filename}.pdf);
+    doc.save(`${filename}.pdf`);
   } else {
     window.print();
   }
