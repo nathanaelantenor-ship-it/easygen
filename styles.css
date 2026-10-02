@@ -1,0 +1,61 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-primary: #F8F9FA;
+  --bg-surface: #FFFFFF;
+  --text-primary: rgba(0, 0, 0, 0.82);
+  --text-secondary: #6B7280;
+  --accent-color: #0000FF;
+  --border-color: #E5E7EB;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #18181B;
+  --bg-surface: #242427;
+  --text-primary: #F4F4F5;
+  --text-secondary: #9CA3AF;
+  --accent-color: #0000FF;
+  --border-color: #2E2E33;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.7);
+}
+
+/* Card hover and interactive styling */
+.transition-smooth {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Print Styling for Proposal Export */
+@media print {
+  aside, header, nav, button, #toast-container {
+    display: none !important;
+  }
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
