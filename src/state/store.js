@@ -1,43 +1,198 @@
 import { initialData } from './initialData.js';
+import { auth } from '../services/authService.js';
+import { getSupabase } from '../config/supabase.js';
 
-const STORAGE_KEY = 'APP_TESTE_DATA_V1';
+function getUserStorageKey(userId) {
+  return `APP_TESTE_DATA_USER_${userId}`;
+}
 
 class Store {
   constructor() {
     this.listeners = new Set();
-    this.state = this.loadState();
+    this.currentUserId = null;
+    this.state = null;
+    this.initAuthSync();
   }
 
-  loadState() {
+  initAuthSync() {
+    const user = auth.getCurrentUser();
+    if (user && user.id) {
+      this.initializeUserSession(user);
+    }
+    auth.subscribe((updatedUser) => {
+      if (updatedUser && updatedUser.id) {
+        if (this.currentUserId !== updatedUser.id) {
+          this.initializeUserSession(updatedUser);
+        }
+      } else {
+        this.clearUserSession();
+      }
+    });
+  }
+
+  initializeUserSession(user) {
+    this.currentUserId = user.id;
+    this.state = this.loadUserState(user);
+    this.saveState();
+    this.syncWithSupabase();
+    this.notify('user_changed', this.state);
+  }
+
+  clearUserSession() {
+    this.currentUserId = null;
+    this.state = null;
+    this.notify('user_logged_out', null);
+  }
+
+  createEmptyUserState(user) {
+    return {
+      userId: user.id,
+      profile: {
+        id: user.id,
+        name: user.name || user.email.split('@')[0],
+        role: user.businessType || "Diretor Criativo",
+        company: "",
+        cnpj: "",
+        email: user.email,
+        phone: "",
+        instagram: "",
+        website: "",
+        address: "",
+        currency: "BRL",
+        theme: "light",
+        dateFormat: "DD/MM/YYYY",
+        xp: 0,
+        level: 1,
+        xpEnabled: true,
+        avatar: user.avatar || "",
+        dashboardWidgets: {
+          attention: true,
+          finance: true,
+          cashflow: true,
+          commercial: true,
+          health: true,
+          projects: true,
+          deliveries: true,
+          goals: true,
+          routine: true
+        }
+      },
+      categories: [
+        { id: "cat-1", name: "Serviços & Projetos", icon: "briefcase", color: "#0000FF", type: "business", nature: "income" },
+        { id: "cat-2", name: "Recorrência / Retainer", icon: "repeat", color: "#10B981", type: "business", nature: "income" },
+        { id: "cat-3", name: "Software & SaaS", icon: "laptop", color: "#6366F1", type: "business", nature: "expense" },
+        { id: "cat-4", name: "Equipamentos & Hardware", icon: "monitor", color: "#F59E0B", type: "business", nature: "expense" },
+        { id: "cat-5", name: "Internet & Telefonia", icon: "wifi", color: "#06B6D4", type: "business", nature: "expense" },
+        { id: "cat-6", name: "Impostos & Tributos", icon: "file-text", color: "#EF4444", type: "business", nature: "expense" },
+        { id: "cat-7", name: "Freelancers & Parceiros", icon: "users", color: "#8B5CF6", type: "business", nature: "expense" },
+        { id: "cat-8", name: "Moradia & Contas", icon: "home", color: "#3B82F6", type: "personal", nature: "expense" },
+        { id: "cat-9", name: "Alimentação", icon: "coffee", color: "#F97316", type: "personal", nature: "expense" },
+        { id: "cat-10", name: "Saúde & Bem-estar", icon: "heart", color: "#14B8A6", type: "personal", nature: "expense" },
+        { id: "cat-11", name: "Lazer & Viagens", icon: "compass", color: "#84CC16", type: "personal", nature: "expense" }
+      ],
+      services: [],
+      leads: [],
+      clients: [],
+      proposals: [],
+      projects: [],
+      transactions: [],
+      tasks: [],
+      habits: [],
+      goals: [],
+      events: [],
+      documents: [],
+      notifications: [],
+      deliveries: [],
+      deliveryColumns: [
+        { id: 'backlog', title: 'Backlog', color: '#6B7280' },
+        { id: 'em_andamento', title: 'Em Andamento', color: '#3B82F6' },
+        { id: 'revisao', title: 'Em Revisão', color: '#F59E0B' },
+        { id: 'aprovado', title: 'Aprovado', color: '#10B981' },
+        { id: 'entregue', title: 'Entregue', color: '#8B5CF6' }
+      ],
+      deliveryTags: [
+        { id: 'tag-1', name: 'Design', color: '#3B82F6' },
+        { id: 'tag-2', name: 'UI/UX', color: '#8B5CF6' },
+        { id: 'tag-3', name: 'Vídeo', color: '#EC4899' },
+        { id: 'tag-4', name: 'Branding', color: '#F59E0B' },
+        { id: 'tag-5', name: 'Dev', color: '#10B981' }
+      ],
+      inbox: []
+    };
+  }
+
+  loadUserState(user) {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const key = getUserStorageKey(user.id);
+      const stored = localStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (!parsed.deliveries) parsed.deliveries = JSON.parse(JSON.stringify(initialData.deliveries || []));
-        if (!parsed.deliveryColumns) parsed.deliveryColumns = JSON.parse(JSON.stringify(initialData.deliveryColumns || []));
-        if (!parsed.deliveryTags) parsed.deliveryTags = JSON.parse(JSON.stringify(initialData.deliveryTags || []));
-        if (!parsed.inbox) parsed.inbox = JSON.parse(JSON.stringify(initialData.inbox || []));
+        if (!parsed.deliveries) parsed.deliveries = [];
+        if (!parsed.deliveryColumns) parsed.deliveryColumns = [
+          { id: 'backlog', title: 'Backlog', color: '#6B7280' },
+          { id: 'em_andamento', title: 'Em Andamento', color: '#3B82F6' },
+          { id: 'revisao', title: 'Em Revisão', color: '#F59E0B' },
+          { id: 'aprovado', title: 'Aprovado', color: '#10B981' },
+          { id: 'entregue', title: 'Entregue', color: '#8B5CF6' }
+        ];
+        if (!parsed.deliveryTags) parsed.deliveryTags = [];
+        if (!parsed.inbox) parsed.inbox = [];
+        if (!parsed.clients) parsed.clients = [];
+        if (!parsed.leads) parsed.leads = [];
+        if (!parsed.projects) parsed.projects = [];
+        if (!parsed.services) parsed.services = [];
+        if (!parsed.transactions) parsed.transactions = [];
+        if (!parsed.tasks) parsed.tasks = [];
+        if (!parsed.events) parsed.events = [];
+        if (!parsed.habits) parsed.habits = [];
+        if (!parsed.goals) parsed.goals = [];
+        if (!parsed.documents) parsed.documents = [];
+        if (!parsed.notifications) parsed.notifications = [];
         if (parsed.profile) {
-          if (parsed.profile.xp === undefined) parsed.profile.xp = initialData.profile.xp || 1240;
-          if (parsed.profile.level === undefined) parsed.profile.level = initialData.profile.level || 12;
-          if (parsed.profile.xpEnabled === undefined) parsed.profile.xpEnabled = true;
-          if (!parsed.profile.dashboardWidgets) parsed.profile.dashboardWidgets = { ...initialData.profile.dashboardWidgets };
+          if (!parsed.profile.dashboardWidgets) parsed.profile.dashboardWidgets = {
+            attention: true, finance: true, cashflow: true, commercial: true, health: true, projects: true, deliveries: true, goals: true, routine: true
+          };
         }
         return parsed;
       }
     } catch (e) {
-      console.error('Erro ao carregar dados do LocalStorage:', e);
+      console.error('Erro ao carregar dados do usuário:', e);
     }
-    return JSON.parse(JSON.stringify(initialData));
+    // Novo usuário -> Estado 100% limpo, zero dados mockados!
+    return this.createEmptyUserState(user);
   }
 
   saveState() {
+    if (!this.currentUserId || !this.state) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+      const key = getUserStorageKey(this.currentUserId);
+      localStorage.setItem(key, JSON.stringify(this.state));
     } catch (e) {
       console.error('Erro ao salvar no LocalStorage:', e);
     }
     this.notify('update', this.state);
+  }
+
+  async syncWithSupabase() {
+    const supabase = getSupabase();
+    if (!supabase || !this.currentUserId || !this.state) return;
+    try {
+      // Upsert profile in Supabase
+      await supabase.from('profiles').upsert({
+        id: this.currentUserId,
+        name: this.state.profile.name,
+        email: this.state.profile.email,
+        avatar: this.state.profile.avatar,
+        business_type: this.state.profile.role,
+        theme: this.state.profile.theme,
+        xp: this.state.profile.xp,
+        level: this.state.profile.level,
+        dashboard_widgets: this.state.profile.dashboardWidgets,
+        updated_at: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn('Erro na sincronização de perfil com Supabase:', err);
+    }
   }
 
   subscribe(listener) {
@@ -56,6 +211,14 @@ class Store {
   }
 
   getState() {
+    if (!this.state) {
+      return {
+        profile: { name: 'Visitante', email: '', theme: 'light', xp: 0, level: 1 },
+        clients: [], leads: [], projects: [], deliveries: [], transactions: [],
+        tasks: [], habits: [], goals: [], events: [], documents: [], inbox: [],
+        categories: [], services: [], proposals: [], notifications: []
+      };
+    }
     return this.state;
   }
 
@@ -91,6 +254,7 @@ class Store {
   updateProfile(profileData) {
     this.state.profile = { ...this.state.profile, ...profileData };
     this.saveState();
+    auth.updateProfileData(profileData);
   }
 
   setTheme(theme) {
@@ -934,25 +1098,41 @@ class Store {
 
   // --- METRICAS CALCULADAS DO DASHBOARD & RELACIONAMENTOS ---
   getDashboardMetrics(period = 'mes') {
-    const txs = this.state.transactions.filter(t => t.scope === 'business');
+    if (!this.state) {
+      return {
+        financial: { income: 0, expenses: 0, profit: 0, balance: 0, receivable: 0, payable: 0 },
+        commercial: { inFunnel: 0, newLeads: 0, converted: 0, conversionRate: 0, totalProposalValue: 0, approvedProposalValue: 0, negotiatingProposalValue: 0 },
+        projects: { active: 0, completed: 0, urgent: 0, totalRevenue: 0 },
+        deliveries: { total: 0, backlog: 0, inProgress: 0, inReview: 0, delivered: 0, overdue: 0, dueToday: 0, dueSoon: 0 }
+      };
+    }
+
+    const txs = (this.state.transactions || []).filter(t => t.scope === 'business');
     const incomeTxs = txs.filter(t => t.type === 'income');
     const expenseTxs = txs.filter(t => t.type === 'expense');
 
-    const totalIncome = incomeTxs.reduce((acc, t) => acc + (t.amount || 0), 0);
-    const totalExpense = expenseTxs.reduce((acc, t) => acc + (t.amount || 0), 0);
+    const totalIncome = incomeTxs.filter(t => t.status === 'paid').reduce((acc, t) => acc + (t.amount || 0), 0);
+    const totalExpense = expenseTxs.filter(t => t.status === 'paid').reduce((acc, t) => acc + (t.amount || 0), 0);
     const profit = totalIncome - totalExpense;
 
-    const leads = this.state.leads;
+    const receivable = txs
+      .filter(t => t.type === 'income' && t.status !== 'paid')
+      .reduce((acc, t) => acc + (t.amount || 0), 0);
+    const payable = txs
+      .filter(t => t.type === 'expense' && t.status !== 'paid')
+      .reduce((acc, t) => acc + (t.amount || 0), 0);
+
+    const leads = this.state.leads || [];
     const leadsInFunnel = leads.filter(l => l.status !== 'aprovado' && l.status !== 'cancelado').length;
     const leadsConverted = leads.filter(l => l.status === 'aprovado').length;
     const conversionRate = leads.length > 0 ? Math.round((leadsConverted / leads.length) * 100) : 0;
 
-    const proposals = this.state.proposals;
+    const proposals = this.state.proposals || [];
     const proposalTotal = proposals.reduce((acc, p) => acc + (p.finalValue || p.value || 0), 0);
     const proposalApproved = proposals.filter(p => p.status === 'aprovada').reduce((acc, p) => acc + (p.finalValue || p.value || 0), 0);
     const proposalNegotiating = proposals.filter(p => p.status === 'negociacao' || p.status === 'enviada').reduce((acc, p) => acc + (p.finalValue || p.value || 0), 0);
 
-    const projects = this.state.projects;
+    const projects = this.state.projects || [];
     const activeProjects = projects.filter(p => p.stage !== 'entrega' && p.stage !== 'pago' && p.stage !== 'cancelado').length;
     const completedProjects = projects.filter(p => p.stage === 'entrega' || p.stage === 'pago').length;
     const urgentProjects = projects.filter(p => p.priority === 'urgente' && p.stage !== 'entrega').length;
@@ -963,8 +1143,8 @@ class Store {
         expenses: totalExpense,
         profit: profit,
         balance: profit,
-        receivable: 11400,
-        payable: 520
+        receivable: receivable,
+        payable: payable
       },
       commercial: {
         inFunnel: leadsInFunnel,
@@ -1127,11 +1307,32 @@ class Store {
 
   // --- SAÚDE DO NEGÓCIO (V2) ---
   calculateBusinessHealth() {
+    if (!this.state) {
+      return {
+        overall: 100,
+        commercial: { score: 100, diagnosis: 'Iniciando operação. Cadastre seu primeiro lead no CRM.' },
+        finance: { score: 100, diagnosis: 'Nenhuma despesa ou conta pendente. Tudo pronto para começar.' },
+        projects: { score: 100, diagnosis: 'Nenhum projeto atrasado. Cronograma 100% em dia.' },
+        relationship: { score: 100, diagnosis: 'Base de clientes pronta para receber novos cadastros.' }
+      };
+    }
+
     const leads = this.state.leads || [];
     const proposals = this.state.proposals || [];
     const projects = this.state.projects || [];
     const clients = this.state.clients || [];
     const transactions = this.state.transactions || [];
+
+    // Se conta 100% nova sem nenhum registro
+    if (leads.length === 0 && clients.length === 0 && projects.length === 0 && transactions.length === 0) {
+      return {
+        overall: 100,
+        commercial: { score: 100, diagnosis: 'Iniciando operação. Cadastre seu primeiro lead no CRM.' },
+        finance: { score: 100, diagnosis: 'Sem contas pendentes ou atrasadas. Tudo pronto para faturar.' },
+        projects: { score: 100, diagnosis: 'Sem projetos atrasados. Inicie seus entregáveis no fluxo.' },
+        relationship: { score: 100, diagnosis: 'Base de clientes pronta para receber novos cadastros.' }
+      };
+    }
 
     // 1. Comercial Score
     const leadsInFunnel = leads.filter(l => l.status !== 'aprovado' && l.status !== 'cancelado').length;
@@ -1145,13 +1346,15 @@ class Store {
 
     const openPipelineVal = proposals.filter(p => p.status === 'enviada' || p.status === 'negociacao').reduce((acc, p) => acc + (p.finalValue || p.value || 0), 0);
     const pipeFormatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(openPipelineVal);
-    const commercialDiagnosis = `Pipeline com ${pipeFormatted} em negociação e taxa de conversão de ${Math.round(conversionRate)}%.`;
+    const commercialDiagnosis = leads.length === 0 
+      ? 'Nenhum lead em negociação no momento. Cadastre leads no CRM.'
+      : `Pipeline com ${pipeFormatted} em negociação e taxa de conversão de ${Math.round(conversionRate)}%.`;
 
     // 2. Financeiro Score
     const businessTxs = transactions.filter(t => t.scope === 'business');
     const income = businessTxs.filter(t => t.type === 'income').reduce((acc, t) => acc + (t.amount || 0), 0);
     const expense = businessTxs.filter(t => t.type === 'expense').reduce((acc, t) => acc + (t.amount || 0), 0);
-    const overdueCount = transactions.filter(t => t.status !== 'paid' && t.dueDate < new Date().toISOString().split('T')[0]).length;
+    const overdueCount = transactions.filter(t => t.status !== 'paid' && t.dueDate && t.dueDate < new Date().toISOString().split('T')[0]).length;
     const margin = income > 0 ? Math.round(((income - expense) / income) * 100) : 0;
 
     let financeScore = 60;
@@ -1160,7 +1363,9 @@ class Store {
     if (overdueCount > 0) financeScore -= (overdueCount * 10);
     financeScore = Math.min(100, Math.max(15, Math.round(financeScore)));
 
-    let financeDiagnosis = `Margem operacional de ${margin}% e saldo positivo.`;
+    let financeDiagnosis = transactions.length === 0
+      ? 'Nenhuma movimentação no período. Registre sua primeira receita.'
+      : `Margem operacional de ${margin}% e saldo positivo.`;
     if (overdueCount > 0) {
       financeDiagnosis = `Indicador reduzido porque existem ${overdueCount} ${overdueCount === 1 ? 'conta vencida' : 'contas vencidas'}. Margem de ${margin}%.`;
     }
@@ -1173,9 +1378,11 @@ class Store {
     else projectsScore -= (overdueProjects.length * 15);
     projectsScore = Math.min(100, Math.max(20, Math.round(projectsScore)));
 
-    const projectsDiagnosis = overdueProjects.length === 0 
-      ? `Todos os ${activeProjects.length} projetos ativos estão dentro do cronograma previsto.` 
-      : `${overdueProjects.length} ${overdueProjects.length === 1 ? 'projeto atrasado' : 'projetos atrasados'} requerem alinhamento imediato.`;
+    const projectsDiagnosis = projects.length === 0
+      ? 'Nenhum projeto cadastrado ainda. Crie seu primeiro projeto para acompanhar etapas.'
+      : overdueProjects.length === 0 
+        ? `Todos os ${activeProjects.length} projetos ativos estão dentro do cronograma previsto.` 
+        : `${overdueProjects.length} ${overdueProjects.length === 1 ? 'projeto atrasado' : 'projetos atrasados'} requerem alinhamento imediato.`;
 
     // 4. Relacionamento Score
     const totalClients = clients.length;
@@ -1185,9 +1392,11 @@ class Store {
       const days = Math.floor((new Date() - new Date(ref)) / (1000 * 60 * 60 * 24));
       return days >= 60;
     }).length;
-    const activeRatio = totalClients > 0 ? ((totalClients - inactiveClients) / totalClients) * 100 : 80;
+    const activeRatio = totalClients > 0 ? ((totalClients - inactiveClients) / totalClients) * 100 : 100;
     let relationshipScore = Math.min(100, Math.max(30, Math.round(activeRatio)));
-    const relationshipDiagnosis = `${Math.round(activeRatio)}% da base de clientes com contato e serviço recente nos últimos 60 dias.`;
+    const relationshipDiagnosis = totalClients === 0
+      ? 'Nenhum cliente cadastrado ainda. Adicione contatos na Central de Clientes.'
+      : `${Math.round(activeRatio)}% da base de clientes com contato e serviço recente nos últimos 60 dias.`;
 
     const overallScore = Math.round((commercialScore + financeScore + projectsScore + relationshipScore) / 4);
 

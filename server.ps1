@@ -1,10 +1,10 @@
-﻿$port = 3000
+$port = 3000
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$port/")
 $listener.Start()
 Write-Host "Servidor APP TESTE iniciado em http://localhost:$port" -ForegroundColor Green
 Write-Host "Pressione Ctrl+C para encerrar." -ForegroundColor Yellow
-Start-Process "http://localhost:$port"
+if (-not ($args -contains "-NoBrowser")) { Start-Process "http://localhost:$port" }
 
 $mimeTypes = @{
     ".html" = "text/html; charset=utf-8"

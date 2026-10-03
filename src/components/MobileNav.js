@@ -1,5 +1,6 @@
 import { modal } from './Modal.js';
 import { store } from '../state/store.js';
+import { auth } from '../services/authService.js';
 
 export function renderMobileNav(currentModule) {
   const pendingInbox = (store.getState().inbox || []).filter(i => i.status === 'pending').length;
@@ -72,6 +73,15 @@ export function openMobileMenuDrawer(currentModule, onNavigate) {
           <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
         </button>
       `).join('')}
+
+      <div class="pt-3 mt-3 border-t border-zinc-100 dark:border-zinc-800">
+        <button id="mobile-drawer-logout" class="w-full text-left p-3 rounded-xl text-xs font-semibold flex items-center justify-between text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            <span>Sair da conta</span>
+          </div>
+        </button>
+      </div>
     </div>
   `;
 
@@ -88,4 +98,21 @@ export function openMobileMenuDrawer(currentModule, onNavigate) {
       if (onNavigate) onNavigate(mod);
     };
   });
+
+  const logoutBtn = drawer.panel.querySelector('#mobile-drawer-logout');
+  if (logoutBtn) {
+    logoutBtn.onclick = () => {
+      drawer.close();
+      modal.confirm({
+        title: 'Sair da conta?',
+        message: 'Você precisará informar seu e-mail e senha para acessar novamente seus dados.',
+        confirmText: 'Sair',
+        confirmColor: 'bg-rose-600 hover:bg-rose-700',
+        onConfirm: async () => {
+          await auth.signOut();
+          if (onNavigate) onNavigate('login');
+        }
+      });
+    };
+  }
 }

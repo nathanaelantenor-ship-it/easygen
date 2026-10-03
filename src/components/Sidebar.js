@@ -34,7 +34,7 @@ export function renderSidebar(currentModule, onNavigate) {
             <span class="block text-[10px] text-zinc-400 font-medium -mt-0.5">Gestão Inteligente</span>
           </div>
         </div>
-        <span class="text-[10px] uppercase font-semibold tracking-wider text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/50 dark:border-blue-800/40">v2.0</span>
+        <span class="text-[10px] uppercase font-semibold tracking-wider text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/50 dark:border-blue-800/40">v2.1</span>
       </div>
 
       <!-- Navigation Items -->
@@ -69,17 +69,22 @@ export function renderSidebar(currentModule, onNavigate) {
         <div class="flex items-center justify-between p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
           <div class="flex items-center gap-2.5 overflow-hidden">
             <div class="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-300 font-bold text-xs flex items-center justify-center shrink-0">
-              NA
+              ${(store.getState().profile?.name || 'U').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
             </div>
             <div class="truncate">
-              <div class="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">Nathan Antenor</div>
-              <div class="text-[10px] text-zinc-400 truncate">Estúdio Criativo</div>
+              <div class="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate" title="${store.getState().profile?.name || 'Usuário'}">${store.getState().profile?.name || 'Usuário'}</div>
+              <div class="text-[10px] text-zinc-400 truncate">${store.getState().profile?.role || 'Espaço de Trabalho'}</div>
             </div>
           </div>
-          <button id="sidebar-theme-toggle" title="Alternar tema claro/escuro" class="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
-            <svg class="w-4 h-4 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-            <svg class="w-4 h-4 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
-          </button>
+          <div class="flex items-center gap-1 shrink-0">
+            <button id="sidebar-theme-toggle" title="Alternar tema claro/escuro" class="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors cursor-pointer">
+              <svg class="w-4 h-4 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+              <svg class="w-4 h-4 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+            </button>
+            <button id="sidebar-logout-btn" title="Sair da conta" class="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </aside>

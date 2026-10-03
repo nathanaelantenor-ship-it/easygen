@@ -23,16 +23,30 @@ export function renderDashboardView(container, onNavigate) {
   // Saudação de acordo com o horário
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
-  const firstName = (profile.name || 'Nathan').split(' ')[0];
+  const firstName = (profile.name || 'Criativo').split(' ')[0];
 
   // Pipeline aberto
   const openProposals = (state.proposals || []).filter(p => p.status === 'enviada' || p.status === 'negociacao');
   const openPipelineValue = openProposals.reduce((acc, p) => acc + (p.finalValue || p.value || 0), 0);
 
   // XP progress calculation
-  const currentXP = profile.xp || 1240;
-  const currentLevel = profile.level || 12;
+  const currentXP = profile.xp ?? 0;
+  const currentLevel = profile.level ?? 1;
   const xpInCurrentLevel = currentXP % 100;
+
+  // Transações atrasadas e previstas calculadas dinamicamente
+  const overdueTxs = (state.transactions || []).filter(t => t.type === 'income' && t.status !== 'paid' && t.dueDate && t.dueDate < new Date().toISOString().split('T')[0]);
+  const overdueTotal = overdueTxs.reduce((acc, t) => acc + (t.amount || 0), 0);
+  const pendingIncome = (state.transactions || []).filter(t => t.type === 'income' && t.status !== 'paid');
+  const previstoMes = metrics.financial.income + pendingIncome.reduce((acc, t) => acc + (t.amount || 0), 0);
+
+  // Onboarding Checklist
+  const hasClients = (state.clients || []).length > 0;
+  const hasServices = (state.services || []).length > 0;
+  const hasProjectsOrDeliveries = (state.projects || []).length > 0 || (state.deliveries || []).length > 0;
+  const hasTransactions = (state.transactions || []).length > 0;
+  const completedSteps = [hasClients, hasServices, hasProjectsOrDeliveries, hasTransactions].filter(Boolean).length;
+  const isNewUser = (state.clients || []).length === 0 && (state.leads || []).length === 0 && (state.projects || []).length === 0 && (state.transactions || []).length === 0;
 
   container.innerHTML = `
     <div class="space-y-6">
@@ -78,6 +92,69 @@ export function renderDashboardView(container, onNavigate) {
           </button>
         </div>
       </div>
+
+      <!-- ONBOARDING & EMPTY STATE GUIA RÁPIDO (V2.1) -->
+      ${isNewUser || completedSteps < 4 ? `
+        <div id="onboarding-guide-banner" class="p-6 rounded-3xl bg-gradient-to-br from-blue-50/80 via-white to-indigo-50/50 dark:from-zinc-900 dark:via-zinc-850 dark:to-zinc-900 border border-blue-100 dark:border-zinc-800 shadow-sm space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white tracking-wide uppercase">Primeiros Passos</span>
+                <span class="text-xs font-semibold text-zinc-500">${completedSteps}/4 passos concluídos</span>
+              </div>
+              <h3 class="text-base font-bold text-zinc-900 dark:text-zinc-100 mt-1">Seu negócio começa aqui</h3>
+              <p class="text-xs text-zinc-500">Configure os pilares essenciais para transformar propostas em contratos e entregas em faturamento.</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="w-24 bg-zinc-200 dark:bg-zinc-700 h-2 rounded-full overflow-hidden">
+                <div class="bg-blue-600 h-full rounded-full transition-all duration-500" style="width: ${(completedSteps / 4) * 100}%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <!-- Passo 1: Cliente -->
+            <button data-goto="clients" class="p-3.5 rounded-2xl border text-left transition-all ${hasClients ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-zinc-800 border-zinc-200/80 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs cursor-pointer'}">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider ${hasClients ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}">Passo 1</span>
+                <span class="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${hasClients ? 'bg-emerald-600 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500'}">${hasClients ? '✓' : '1'}</span>
+              </div>
+              <div class="text-xs font-bold text-zinc-900 dark:text-zinc-100">Cadastre seu 1º cliente</div>
+              <div class="text-[11px] text-zinc-400 mt-0.5">${hasClients ? 'Concluído' : '+ Novo cliente'}</div>
+            </button>
+
+            <!-- Passo 2: Serviços -->
+            <button data-goto="services" class="p-3.5 rounded-2xl border text-left transition-all ${hasServices ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-zinc-800 border-zinc-200/80 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs cursor-pointer'}">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider ${hasServices ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}">Passo 2</span>
+                <span class="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${hasServices ? 'bg-emerald-600 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500'}">${hasServices ? '✓' : '2'}</span>
+              </div>
+              <div class="text-xs font-bold text-zinc-900 dark:text-zinc-100">Adicione seus serviços</div>
+              <div class="text-[11px] text-zinc-400 mt-0.5">${hasServices ? 'Concluído' : '+ Tabela de serviços'}</div>
+            </button>
+
+            <!-- Passo 3: Projeto / Entrega -->
+            <button data-goto="projects" class="p-3.5 rounded-2xl border text-left transition-all ${hasProjectsOrDeliveries ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-zinc-800 border-zinc-200/80 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs cursor-pointer'}">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider ${hasProjectsOrDeliveries ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}">Passo 3</span>
+                <span class="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${hasProjectsOrDeliveries ? 'bg-emerald-600 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500'}">${hasProjectsOrDeliveries ? '✓' : '3'}</span>
+              </div>
+              <div class="text-xs font-bold text-zinc-900 dark:text-zinc-100">Crie seu 1º projeto</div>
+              <div class="text-[11px] text-zinc-400 mt-0.5">${hasProjectsOrDeliveries ? 'Concluído' : '+ Projeto ou entrega'}</div>
+            </button>
+
+            <!-- Passo 4: Finanças -->
+            <button data-goto="finance" class="p-3.5 rounded-2xl border text-left transition-all ${hasTransactions ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-zinc-800 border-zinc-200/80 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs cursor-pointer'}">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider ${hasTransactions ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}">Passo 4</span>
+                <span class="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${hasTransactions ? 'bg-emerald-600 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500'}">${hasTransactions ? '✓' : '4'}</span>
+              </div>
+              <div class="text-xs font-bold text-zinc-900 dark:text-zinc-100">Registre 1ª receita</div>
+              <div class="text-[11px] text-zinc-400 mt-0.5">${hasTransactions ? 'Concluído' : '+ Lançamento financeiro'}</div>
+            </button>
+          </div>
+        </div>
+      ` : ''}
 
       <!-- SECTION: PRECISA DA SUA ATENÇÃO -->
       ${widgets.attention ? `
@@ -222,7 +299,7 @@ export function renderDashboardView(container, onNavigate) {
 
             <div class="p-3.5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 shadow-2xs">
               <div class="text-[10px] font-medium text-zinc-500">Previsto Mês</div>
-              <div class="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">${formatCurrency(metrics.financial.income + 4500)}</div>
+              <div class="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">${formatCurrency(previstoMes)}</div>
               <div class="text-[10px] text-blue-600 font-medium mt-1">Contratado</div>
             </div>
 
@@ -234,8 +311,8 @@ export function renderDashboardView(container, onNavigate) {
 
             <div class="p-3.5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 shadow-2xs">
               <div class="text-[10px] font-medium text-zinc-500">Atrasados</div>
-              <div class="text-sm sm:text-base font-bold text-rose-600 dark:text-rose-400 mt-0.5">${formatCurrency(1600)}</div>
-              <div class="text-[10px] text-rose-500 font-medium mt-1">1 cobrança</div>
+              <div class="text-sm sm:text-base font-bold text-rose-600 dark:text-rose-400 mt-0.5">${formatCurrency(overdueTotal)}</div>
+              <div class="text-[10px] text-rose-500 font-medium mt-1">${overdueTxs.length} ${overdueTxs.length === 1 ? 'cobrança' : 'cobranças'}</div>
             </div>
 
             <div class="p-3.5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 shadow-2xs">
@@ -347,7 +424,7 @@ export function renderDashboardView(container, onNavigate) {
                 <button data-goto="projects" class="text-xs text-blue-600 hover:underline font-semibold">Ver Todos →</button>
               </div>
               <div class="space-y-3">
-                ${(state.projects || []).slice(0, 3).map(proj => {
+                ${(state.projects || []).length > 0 ? (state.projects || []).slice(0, 3).map(proj => {
                   const completedTasks = proj.tasks ? proj.tasks.filter(t => t.completed).length : 0;
                   const totalTasks = proj.tasks ? proj.tasks.length : 1;
                   const percent = Math.round((completedTasks / totalTasks) * 100);
@@ -366,10 +443,15 @@ export function renderDashboardView(container, onNavigate) {
                       </div>
                     </div>
                   `;
-                }).join('')}
+                }).join('') : `
+                  <div class="p-6 text-center text-zinc-400 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl">
+                    <p class="text-xs font-medium">Nenhum projeto em andamento.</p>
+                    <p class="text-[10px] text-zinc-400 mt-0.5">Inicie novos contratos pelo botão abaixo.</p>
+                  </div>
+                `}
               </div>
             </div>
-            <button data-goto="projects" class="w-full mt-3 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700/80 text-zinc-800 dark:text-zinc-200 rounded-xl text-xs font-semibold transition-colors">
+            <button data-goto="projects" class="w-full mt-3 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700/80 text-zinc-800 dark:text-zinc-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer">
               + Novo Projeto
             </button>
           </div>
@@ -381,10 +463,10 @@ export function renderDashboardView(container, onNavigate) {
             <div>
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">Próximas Entregas</h3>
-                <button data-goto="entregas" class="text-xs text-blue-600 hover:underline font-semibold">Ver Kanban →</button>
+                <button data-goto="entregas" class="text-xs text-blue-600 hover:underline font-semibold cursor-pointer">Ver Kanban →</button>
               </div>
               <div class="space-y-3">
-                ${(state.deliveries || []).slice(0, 3).map(del => {
+                ${(state.deliveries || []).length > 0 ? (state.deliveries || []).slice(0, 3).map(del => {
                   const checklist = del.checklist || [];
                   const completedChecks = checklist.filter(c => c.completed).length;
                   const chkPercent = checklist.length > 0 ? Math.round((completedChecks / checklist.length) * 100) : 0;
@@ -409,10 +491,15 @@ export function renderDashboardView(container, onNavigate) {
                       ` : ''}
                     </div>
                   `;
-                }).join('')}
+                }).join('') : `
+                  <div class="p-6 text-center text-zinc-400 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl">
+                    <p class="text-xs font-medium">Nenhuma entrega pendente.</p>
+                    <p class="text-[10px] text-zinc-400 mt-0.5">Demandas cadastradas aparecerão aqui.</p>
+                  </div>
+                `}
               </div>
             </div>
-            <button data-goto="entregas" class="w-full mt-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 rounded-xl text-xs font-semibold transition-colors">
+            <button data-goto="entregas" class="w-full mt-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer">
               + Nova Entrega
             </button>
           </div>
@@ -423,10 +510,10 @@ export function renderDashboardView(container, onNavigate) {
           <div>
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">Últimos Lançamentos</h3>
-              <button data-goto="finance" class="text-xs text-blue-600 hover:underline font-semibold">Extrato →</button>
+              <button data-goto="finance" class="text-xs text-blue-600 hover:underline font-semibold cursor-pointer">Extrato →</button>
             </div>
             <div class="divide-y divide-zinc-100 dark:divide-zinc-800">
-              ${(state.transactions || []).slice(0, 4).map(tx => `
+              ${(state.transactions || []).length > 0 ? (state.transactions || []).slice(0, 4).map(tx => `
                 <div class="py-2.5 flex items-center justify-between text-xs">
                   <div>
                     <div class="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[160px]">${tx.title}</div>
@@ -436,10 +523,15 @@ export function renderDashboardView(container, onNavigate) {
                     ${tx.type === 'income' ? '+' : '-'}${formatCurrency(tx.amount)}
                   </div>
                 </div>
-              `).join('')}
+              `).join('') : `
+                <div class="p-6 text-center text-zinc-400">
+                  <p class="text-xs font-medium">Nenhum lançamento financeiro.</p>
+                  <p class="text-[10px] text-zinc-400 mt-0.5">Receitas e despesas aparecerão no extrato.</p>
+                </div>
+              `}
             </div>
           </div>
-          <button data-goto="finance" class="w-full mt-3 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700/80 text-zinc-800 dark:text-zinc-200 rounded-xl text-xs font-semibold transition-colors">
+          <button data-goto="finance" class="w-full mt-3 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700/80 text-zinc-800 dark:text-zinc-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer">
             + Novo Lançamento
           </button>
         </div>
@@ -500,21 +592,42 @@ function renderCashflowChart(period = '30d') {
     window._dashFinanceChart.destroy();
   }
 
-  let labels = ['Jun', 'Jul', 'Ago', 'Set', 'Out'];
-  let incomeData = [9200, 11500, 10800, 13000, 14000];
-  let expenseData = [2100, 2400, 2300, 2800, 3100];
-  let projectedData = [9200, 11500, 10800, 13000, 18500];
+  const txs = (store.getState().transactions || []).filter(t => t.scope === 'business');
+  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const curMonth = new Date().getMonth();
+
+  let labels = [];
+  let incomeData = [];
+  let expenseData = [];
+  let projectedData = [];
 
   if (period === '7d') {
-    labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-    incomeData = [1200, 0, 3500, 800, 2400, 0, 0];
-    expenseData = [150, 420, 200, 90, 310, 80, 50];
-    projectedData = [1200, 0, 3500, 1600, 2400, 0, 0];
-  } else if (period === '90d' || period === 'trimestre') {
-    labels = ['Ago', 'Set', 'Out', 'Nov (Proj)', 'Dez (Proj)'];
-    incomeData = [10800, 13000, 14000, 15500, 19000];
-    expenseData = [2300, 2800, 3100, 3200, 3500];
-    projectedData = [10800, 13000, 18500, 15500, 19000];
+    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().split('T')[0];
+      labels.push(days[d.getDay()]);
+      const dayPaid = txs.filter(t => t.type === 'income' && t.status === 'paid' && t.date === dStr).reduce((acc, t) => acc + (t.amount || 0), 0);
+      const dayFuture = txs.filter(t => t.type === 'income' && t.status !== 'paid' && (t.dueDate === dStr || t.date === dStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+      const dayExp = txs.filter(t => t.type === 'expense' && t.date === dStr).reduce((acc, t) => acc + (t.amount || 0), 0);
+      incomeData.push(dayPaid);
+      projectedData.push(dayPaid + dayFuture);
+      expenseData.push(dayExp);
+    }
+  } else {
+    // 30d, 90d ou mês: agrupa pelos últimos 5 meses
+    for (let i = 4; i >= 0; i--) {
+      const mIdx = (curMonth - i + 12) % 12;
+      labels.push(months[mIdx]);
+      const mPrefix = `2026-${String(mIdx + 1).padStart(2, '0')}`;
+      const mPaid = txs.filter(t => t.type === 'income' && t.status === 'paid' && (t.date || '').startsWith(mPrefix)).reduce((acc, t) => acc + (t.amount || 0), 0);
+      const mFuture = txs.filter(t => t.type === 'income' && t.status !== 'paid' && (t.dueDate || t.date || '').startsWith(mPrefix)).reduce((acc, t) => acc + (t.amount || 0), 0);
+      const mExp = txs.filter(t => t.type === 'expense' && (t.date || '').startsWith(mPrefix)).reduce((acc, t) => acc + (t.amount || 0), 0);
+      incomeData.push(mPaid);
+      projectedData.push(mPaid + mFuture);
+      expenseData.push(mExp);
+    }
   }
 
   window._dashFinanceChart = new window.Chart(ctx, {

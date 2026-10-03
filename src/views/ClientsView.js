@@ -108,9 +108,9 @@ export function renderClientsView(container, onNavigate) {
               </tr>
             </thead>
             <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
-              ${filteredClients.map(c => {
+              ${filteredClients.length > 0 ? filteredClients.map(c => {
                 const initials = c.name ? c.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'CL';
-                const cleanPhone = (c.phone || c.whatsapp || '').replace(/\\D/g, '');
+                const cleanPhone = (c.phone || c.whatsapp || '').replace(/\D/g, '');
                 return `
                   <tr class="hover:bg-zinc-50/70 dark:hover:bg-zinc-850/50 cursor-pointer transition-colors" data-client-id="${c.id}">
                     <td class="p-3.5 font-medium text-zinc-900 dark:text-zinc-100">
@@ -151,7 +151,24 @@ export function renderClientsView(container, onNavigate) {
                     </td>
                   </tr>
                 `;
-              }).join('')}
+              }).join('') : `
+                <tr>
+                  <td colspan="7" class="p-8 text-center">
+                    <div class="max-w-xs mx-auto space-y-3">
+                      <div class="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto text-xl font-bold">
+                        👥
+                      </div>
+                      <div>
+                        <h4 class="text-xs font-bold text-zinc-900 dark:text-zinc-100">Nenhum cliente cadastrado ainda</h4>
+                        <p class="text-[11px] text-zinc-400 mt-1">Cadastre seus clientes para gerenciar projetos, orçamentos e faturamento integrado.</p>
+                      </div>
+                      <button id="clients-empty-new-btn" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs cursor-pointer">
+                        + Cadastrar Primeiro Cliente
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `}
             </tbody>
           </table>
         </div>
@@ -196,6 +213,13 @@ export function renderClientsView(container, onNavigate) {
   container.querySelector('#clients-new-btn').onclick = () => {
     openNewClientModal(() => renderClientsView(container, onNavigate));
   };
+
+  const emptyBtn = container.querySelector('#clients-empty-new-btn');
+  if (emptyBtn) {
+    emptyBtn.onclick = () => {
+      openNewClientModal(() => renderClientsView(container, onNavigate));
+    };
+  }
 }
 
 export function openClientProfileModal(clientId, onNavigate, onRefreshList) {

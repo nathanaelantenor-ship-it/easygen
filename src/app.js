@@ -1,10 +1,16 @@
 import { store } from './state/store.js';
+import { auth } from './services/authService.js';
 import { renderNavbar } from './components/Navbar.js';
 import { renderSidebar } from './components/Sidebar.js';
 import { renderMobileNav, openMobileMenuDrawer } from './components/MobileNav.js';
 import { openQuickActionsModal } from './components/QuickActionsModal.js';
 import { openGlobalSearch } from './components/GlobalSearchModal.js';
 import { openNotificationsDrawer } from './components/NotificationsDrawer.js';
+import { modal } from './components/Modal.js';
+
+import { renderLoginView } from './views/LoginView.js';
+import { renderRegisterView } from './views/RegisterView.js';
+import { renderForgotPasswordView } from './views/ForgotPasswordView.js';
 
 import { renderDashboardView } from './views/DashboardView.js';
 import { renderInboxView } from './views/InboxView.js';
@@ -22,25 +28,34 @@ import { renderGoalsView } from './views/GoalsView.js';
 import { renderReportsView } from './views/ReportsView.js';
 import { renderSettingsView } from './views/SettingsView.js';
 
-const viewTitles = {
-  dashboard: 'Dashboard Geral',
-  inbox: 'Inbox & Captura Rápida',
-  crm: 'CRM & Funil Comercial',
-  clients: 'Clientes & Relacionamento',
-  documents: 'Central de Documentos',
-  services: 'Catálogo de Serviços',
-  proposals: 'Propostas Comerciais',
-  projects: 'Gestão de Projetos',
-  entregas: 'Entregas & Operações',
-  finance: 'Controle Financeiro',
-  agenda: 'Agenda & Reuniões',
-  routine: 'Rotina & Produtividade',
-  goals: 'Metas & Objetivos',
-  reports: 'Relatórios Analíticos',
-  settings: 'Configurações'
+const publicRenderers = {
+  'login': renderLoginView,
+  'register': renderRegisterView,
+  'forgot-password': renderForgotPasswordView
 };
 
-const viewRenderers = {
+const viewTitles = {
+  'login': 'Entrar',
+  'register': 'Criar Conta',
+  'forgot-password': 'Recuperar Senha',
+  'dashboard': 'Dashboard Geral',
+  'inbox': 'Inbox & Captura Rápida',
+  'crm': 'CRM & Funil Comercial',
+  'clients': 'Clientes & Relacionamento',
+  'documents': 'Central de Documentos',
+  'services': 'Catálogo de Serviços',
+  'proposals': 'Propostas Comerciais',
+  'projects': 'Gestão de Projetos',
+  'entregas': 'Entregas & Operações',
+  'finance': 'Controle Financeiro',
+  'agenda': 'Agenda & Reuniões',
+  'routine': 'Rotina & Produtividade',
+  'goals': 'Metas & Objetivos',
+  'reports': 'Relatórios Analíticos',
+  'settings': 'Configurações'
+};
+
+const protectedRenderers = {
   dashboard: renderDashboardView,
   inbox: renderInboxView,
   crm: renderCRMView,
@@ -58,24 +73,65 @@ const viewRenderers = {
   settings: renderSettingsView
 };
 
-let currentModule = 'dashboard';
+let currentModule = 'login';
 
 export function initApp() {
   const appRoot = document.getElementById('app-root');
   if (!appRoot) return;
 
-  // Initialize theme from profile
-  const savedTheme = store.getState().profile.theme || 'light';
-  document.documentElement.setAttribute('data-theme', savedTheme);
+  function resolveRoute() {
+    const hash = window.location.hash.replace('#', '').toLowerCase();
+    const isAuth = auth.isAuthenticated();
 
-  // Initialize module from URL hash if valid
-  const initialHash = window.location.hash.replace('#', '').toLowerCase();
-  if (viewRenderers[initialHash]) {
-    currentModule = initialHash;
+    if (!isAuth) {
+      if (hash === 'register' || hash === 'forgot-password') {
+        return hash;
+      }
+      if (hash !== 'login') {
+        window.location.hash = 'login';
+      }
+      return 'login';
+    }
+
+    if (publicRenderers[hash] || !hash) {
+      if (window.location.hash !== '#dashboard') {
+        window.location.hash = 'dashboard';
+      }
+      return 'dashboard';
+    }
+
+    if (protectedRenderers[hash]) {
+      return hash;
+    }
+
+    window.location.hash = 'dashboard';
+    return 'dashboard';
+  }
+
+  function renderApp() {
+    const isAuth = auth.isAuthenticated();
+    const route = resolveRoute();
+    currentModule = route;
+
+    if (!isAuth || publicRenderers[route]) {
+      document.title = `${viewTitles[route] || 'Autenticação'} - APP TESTE`;
+      const currentTheme = store.getState().profile?.theme || 'light';
+      document.documentElement.setAttribute('data-theme', currentTheme);
+
+      appRoot.innerHTML = `<div id="auth-root" class="min-h-screen"></div>`;
+      const authRoot = document.getElementById('auth-root');
+      const renderer = publicRenderers[route] || renderLoginView;
+      renderer(authRoot, navigate);
+      return;
+    }
+
+    const savedTheme = store.getState().profile?.theme || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
+    renderShell();
   }
 
   function renderShell() {
-    // Dynamic document title
     document.title = `${viewTitles[currentModule] || 'Gestão Inteligente'} - APP TESTE`;
 
     appRoot.innerHTML = `
@@ -111,19 +167,19 @@ export function initApp() {
 
   function renderCurrentView() {
     const mainViewContainer = document.getElementById('main-view-container');
-    const renderer = viewRenderers[currentModule] || renderDashboardView;
+    const renderer = protectedRenderers[currentModule] || renderDashboardView;
     if (mainViewContainer && renderer) {
       renderer(mainViewContainer, navigate);
     }
   }
 
   function navigate(moduleId) {
-    if (viewRenderers[moduleId]) {
+    if (publicRenderers[moduleId] || protectedRenderers[moduleId]) {
       currentModule = moduleId;
       if (window.location.hash !== '#' + moduleId) {
         window.location.hash = moduleId;
       }
-      renderShell();
+      renderApp();
     }
   }
 
@@ -135,6 +191,23 @@ export function initApp() {
         navigate(mod);
       };
     });
+
+    // Logout Button in Sidebar
+    const logoutBtn = document.getElementById('sidebar-logout-btn');
+    if (logoutBtn) {
+      logoutBtn.onclick = () => {
+        modal.confirm({
+          title: 'Sair da conta?',
+          message: 'Você precisará informar seu e-mail e senha para acessar novamente seus dados.',
+          confirmText: 'Sair',
+          confirmColor: 'bg-rose-600 hover:bg-rose-700',
+          onConfirm: async () => {
+            await auth.signOut();
+            navigate('login');
+          }
+        });
+      };
+    }
 
     // Quick Actions
     const quickBtn = document.getElementById('nav-quick-actions-btn');
@@ -165,7 +238,7 @@ export function initApp() {
     const navThemeBtn = document.getElementById('nav-theme-toggle');
     if (navThemeBtn) {
       navThemeBtn.onclick = () => {
-        const current = store.getState().profile.theme || 'light';
+        const current = store.getState().profile?.theme || 'light';
         store.setTheme(current === 'light' ? 'dark' : 'light');
         renderShell();
       };
@@ -174,7 +247,7 @@ export function initApp() {
     const sideThemeBtn = document.getElementById('sidebar-theme-toggle');
     if (sideThemeBtn) {
       sideThemeBtn.onclick = () => {
-        const current = store.getState().profile.theme || 'light';
+        const current = store.getState().profile?.theme || 'light';
         store.setTheme(current === 'light' ? 'dark' : 'light');
         renderShell();
       };
@@ -185,25 +258,30 @@ export function initApp() {
   window.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
-      openGlobalSearch(navigate);
+      if (auth.isAuthenticated()) {
+        openGlobalSearch(navigate);
+      }
     }
   });
 
-  // Store update subscription: keep metrics and state in sync
-  store.subscribe((event, payload) => {
-    // re-renders current view if necessary
+  // Store subscription
+  store.subscribe((event) => {
+    if (event === 'user_logged_out') {
+      renderApp();
+    }
   });
 
-  // Listen to browser hash changes (Back / Forward)
+  // Re-render when auth changes
+  auth.subscribe(() => {
+    renderApp();
+  });
+
+  // Hash change listener
   window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '').toLowerCase();
-    if (viewRenderers[hash] && hash !== currentModule) {
-      currentModule = hash;
-      renderShell();
-    }
+    renderApp();
   });
 
-  renderShell();
+  renderApp();
 }
 
 window.addEventListener('DOMContentLoaded', initApp);
