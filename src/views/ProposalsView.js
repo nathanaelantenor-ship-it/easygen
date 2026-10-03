@@ -3,6 +3,7 @@ import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
 import { exportToPDF, exportToCSV } from '../utils/exportUtils.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let filterStatus = 'all';
 
@@ -30,9 +31,7 @@ export function renderProposalsView(container, onNavigate) {
           <p class="text-xs text-zinc-500">Elaboração, envio e conversão de propostas comerciais em projetos ativos.</p>
         </div>
         <div class="flex items-center gap-2">
-          <button id="prop-export-btn" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors">
-            Exportar Lista
-          </button>
+          ${renderExportButtonHtml('proposals-export-dropdown')}
           <button id="prop-new-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             <span>Nova Proposta</span>
@@ -146,13 +145,37 @@ export function renderProposalsView(container, onNavigate) {
     };
   });
 
-  // Export
-  container.querySelector('#prop-export-btn').onclick = () => {
-    const headers = ['Número', 'Cliente', 'Serviço', 'Valor', 'Desconto', 'Valor Final', 'Status', 'Validade', 'Data'];
-    const rows = proposals.map(p => [p.number, p.clientName, p.serviceName, p.value, p.discount, p.finalValue, p.status, p.validity, p.createdAt]);
-    exportToCSV('propostas_comerciais', rows, headers);
-    toast.success('Lista de propostas exportada!');
-  };
+  // Universal Export Handler
+  bindExportButton(container, 'proposals-export-dropdown', () => {
+    const headers = ['Número', 'Cliente', 'Serviço', 'Valor Base', 'Desconto', 'Valor Final', 'Status', 'Validade', 'Data'];
+    const rows = filtered.map(p => [
+      p.number || '',
+      p.clientName || '-',
+      p.serviceName || '-',
+      formatCurrency(p.value || 0),
+      formatCurrency(p.discount || 0),
+      formatCurrency(p.finalValue || p.value || 0),
+      p.status || '',
+      formatDate(p.validity),
+      formatDate(p.createdAt)
+    ]);
+
+    const summary = [
+      { label: 'Total de Propostas', value: proposals.length },
+      { label: 'Valor Enviado', value: formatCurrency(totalSent) },
+      { label: 'Valor Aprovado', value: formatCurrency(totalApproved) },
+      { label: 'Taxa de Conversão', value: `${conversionRate}%` }
+    ];
+
+    return {
+      filename: `propostas_comerciais_${new Date().toISOString().split('T')[0]}`,
+      title: 'Relatório Comercial de Propostas & Orçamentos',
+      headers,
+      rows,
+      summary,
+      filters: `Status: ${filterStatus === 'all' ? 'Todas' : filterStatus}`
+    };
+  });
 
   // New Proposal
   container.querySelector('#prop-new-btn').onclick = () => {

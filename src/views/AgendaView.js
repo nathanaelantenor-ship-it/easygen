@@ -2,6 +2,7 @@ import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatDate } from '../utils/formatters.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let agendaViewMode = 'month'; // 'month' | 'week' | 'biweek'
 let currentYear = 2026;
@@ -51,6 +52,8 @@ export function renderAgendaView(container, onNavigate) {
             <button id="agenda-view-week" class="px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${agendaViewMode === 'week' ? 'bg-white dark:bg-zinc-900 text-blue-600 shadow-2xs' : 'text-zinc-500'}">Semana</button>
             <button id="agenda-view-biweek" class="px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${agendaViewMode === 'biweek' ? 'bg-white dark:bg-zinc-900 text-blue-600 shadow-2xs' : 'text-zinc-500'}">Quinzenal</button>
           </div>
+
+          ${renderExportButtonHtml('agenda-export-dropdown')}
 
           <button id="agenda-new-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -158,6 +161,36 @@ export function renderAgendaView(container, onNavigate) {
   container.querySelector('#agenda-new-btn').onclick = () => {
     openCreateEventModal(() => renderAgendaView(container, onNavigate));
   };
+
+  // Universal Export Handler
+  bindExportButton(container, 'agenda-export-dropdown', () => {
+    const headers = ['Título', 'Data', 'Horário Início', 'Horário Fim', 'Tipo', 'Cliente', 'Local / Link'];
+    const rows = events.map(e => [
+      e.title || '',
+      formatDate(e.date),
+      e.startTime || '-',
+      e.endTime || '-',
+      eventTypeConfig[e.type]?.label || e.type || 'Geral',
+      e.clientName || '-',
+      e.location || e.meetUrl || '-'
+    ]);
+
+    const summary = [
+      { label: 'Total de Compromissos', value: events.length },
+      { label: 'Reuniões com Clientes', value: events.filter(e => e.type === 'reuniao').length },
+      { label: 'Apresentações & Pitches', value: events.filter(e => e.type === 'apresentacao').length },
+      { label: 'Blocos de Foco', value: events.filter(e => e.type === 'foco').length }
+    ];
+
+    return {
+      filename: `agenda_compromissos_${new Date().toISOString().split('T')[0]}`,
+      title: 'Agenda de Compromissos & Reuniões',
+      headers,
+      rows,
+      summary,
+      filters: `Total de Eventos: ${events.length}`
+    };
+  });
 
   // Click on date cell to add event
   container.querySelectorAll('.cal-day-cell').forEach(cell => {

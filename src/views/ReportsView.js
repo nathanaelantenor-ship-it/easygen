@@ -1,7 +1,7 @@
-﻿import { store } from '../state/store.js';
+import { store } from '../state/store.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate } from '../utils/formatters.js';
-import { exportToCSV, exportToExcel, exportToPDF } from '../utils/exportUtils.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let activeReport = 'financeiro';
 
@@ -33,9 +33,7 @@ export function renderReportsView(container, onNavigate) {
             <option value="trimestre">3º Trimestre</option>
             <option value="ano">Ano 2026</option>
           </select>
-          <button id="report-export-csv" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-750 hover:bg-zinc-100 rounded-xl text-xs font-medium">CSV</button>
-          <button id="report-export-excel" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-750 hover:bg-zinc-100 rounded-xl text-xs font-medium">Excel</button>
-          <button id="report-export-pdf" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold">PDF</button>
+          ${renderExportButtonHtml('reports-export-dropdown', 'Exportar Relatório')}
         </div>
       </div>
 
@@ -64,24 +62,18 @@ export function renderReportsView(container, onNavigate) {
   const bodyArea = container.querySelector('#report-body-area');
   renderSelectedReport(bodyArea, activeReport, state);
 
-  // Export Buttons
-  container.querySelector('#report-export-csv').onclick = () => {
-    const { title, headers, rows } = getReportExportData(activeReport, state);
-    exportToCSV(`relatorio_${activeReport}`, rows, headers);
-    toast.success(`Relatório de ${title} exportado em CSV!`);
-  };
-
-  container.querySelector('#report-export-excel').onclick = () => {
-    const { title, headers, rows } = getReportExportData(activeReport, state);
-    exportToExcel(`relatorio_${activeReport}`, rows, headers);
-    toast.success(`Relatório de ${title} exportado em Excel!`);
-  };
-
-  container.querySelector('#report-export-pdf').onclick = () => {
-    const { title, headers, rows } = getReportExportData(activeReport, state);
-    exportToPDF(`relatorio_${activeReport}`, title, headers, rows);
-    toast.success(`Relatório de ${title} exportado em PDF!`);
-  };
+  // Universal Export Handler
+  bindExportButton(container, 'reports-export-dropdown', () => {
+    const { title, headers, rows, summary } = getReportExportData(activeReport, state);
+    return {
+      filename: `relatorio_${activeReport}_${new Date().toISOString().split('T')[0]}`,
+      title: `Relatório Analítico: ${title}`,
+      headers,
+      rows,
+      summary: summary || [{ label: 'Módulo Analisado', value: title }, { label: 'Linhas Exportadas', value: rows.length }],
+      filters: `Módulo: ${title}`
+    };
+  });
 }
 
 function renderSelectedReport(container, reportType, state) {
@@ -199,28 +191,161 @@ function renderSelectedReport(container, reportType, state) {
 
 function getReportExportData(type, state) {
   if (type === 'financeiro') {
+    const txs = state.transactions || [];
+    const totalIn = txs.filter(t => t.type === 'income').reduce((a, b) => a + (b.amount || 0), 0);
+    const totalOut = txs.filter(t => t.type === 'expense').reduce((a, b) => a + (b.amount || 0), 0);
     return {
       title: 'Relatório Financeiro',
-      headers: ['Data', 'Título', 'Categoria', 'Âmbito', 'Valor (R$)'],
-      rows: state.transactions.map(t => [t.date, t.title, t.category, t.scope, t.amount])
+      headers: ['Data', 'Título', 'Categoria', 'Âmbito', 'Tipo', 'Valor', 'Status'],
+      rows: txs.map(t => [
+        formatDate(t.date),
+        t.title || '',
+        t.category || 'Geral',
+        t.scope === 'business' ? 'Empresa' : 'Pessoal',
+        t.type === 'income' ? 'Receita' : 'Despesa',
+        formatCurrency(t.amount || 0),
+        t.status === 'paid' ? 'Pago' : 'Previsto'
+      ]),
+      summary: [
+        { label: 'Total de Receitas', value: formatCurrency(totalIn) },
+        { label: 'Total de Despesas', value: formatCurrency(totalOut) },
+        { label: 'Resultado Líquido', value: formatCurrency(totalIn - totalOut) }
+      ]
+    };
+  } else if (type === 'comercial') {
+    const props = state.proposals || [];
+    const totalApproved = props.filter(p => p.status === 'aprovada').reduce((a, b) => a + (b.finalValue || b.value || 0), 0);
+    return {
+      title: 'Relatório Comercial & Propostas',
+      headers: ['Número', 'Cliente', 'Serviço', 'Valor Base', 'Valor Final', 'Status', 'Validade'],
+      rows: props.map(p => [
+        p.number || '',
+        p.clientName || '-',
+        p.serviceName || '-',
+        formatCurrency(p.value || 0),
+        formatCurrency(p.finalValue || p.value || 0),
+        p.status || '',
+        formatDate(p.validity)
+      ]),
+      summary: [
+        { label: 'Total de Propostas', value: props.length },
+        { label: 'Propostas Aprovadas', value: props.filter(p => p.status === 'aprovada').length },
+        { label: 'Receita Aprovada', value: formatCurrency(totalApproved) }
+      ]
+    };
+  } else if (type === 'crm') {
+    const leads = state.leads || [];
+    const totalPipeline = leads.reduce((a, b) => a + (b.estimatedValue || 0), 0);
+    return {
+      title: 'Relatório de CRM & Funil de Vendas',
+      headers: ['Nome', 'Empresa', 'Telefone', 'Canal', 'Serviço', 'Valor Estimado', 'Status'],
+      rows: leads.map(l => [
+        l.name || '',
+        l.company || '-',
+        l.phone || '-',
+        l.channel || '-',
+        l.serviceOfInterest || '-',
+        formatCurrency(l.estimatedValue || 0),
+        l.status || ''
+      ]),
+      summary: [
+        { label: 'Total de Oportunidades', value: leads.length },
+        { label: 'Valor em Pipeline', value: formatCurrency(totalPipeline) },
+        { label: 'Leads Aprovados', value: leads.filter(l => l.status === 'aprovado').length }
+      ]
     };
   } else if (type === 'clientes') {
+    const clients = state.clients || [];
+    const totalLtv = clients.reduce((a, b) => a + (b.totalGenerated || 0), 0);
     return {
       title: 'Relatório de Clientes e LTV',
-      headers: ['Nome', 'Empresa', 'Tipo', 'LTV (R$)', 'Projetos', 'Ticket Médio'],
-      rows: state.clients.map(c => [c.name, c.company, c.clientType, c.totalGenerated, c.projectsCount, c.averageTicket])
+      headers: ['Nome', 'Empresa', 'Tipo', 'LTV Total', 'Projetos', 'Ticket Médio'],
+      rows: clients.map(c => [
+        c.name || '',
+        c.company || '-',
+        c.clientType || 'Mensalista',
+        formatCurrency(c.totalGenerated || 0),
+        c.projectsCount || 0,
+        formatCurrency(c.averageTicket || 0)
+      ]),
+      summary: [
+        { label: 'Base de Clientes', value: clients.length },
+        { label: 'LTV Consolidado', value: formatCurrency(totalLtv) },
+        { label: 'Ticket Médio Global', value: formatCurrency(clients.length > 0 ? totalLtv / clients.length : 0) }
+      ]
     };
   } else if (type === 'projetos') {
+    const projects = state.projects || [];
+    const totalVal = projects.reduce((a, b) => a + (b.value || 0), 0);
     return {
-      title: 'Relatório de Projetos',
-      headers: ['Projeto', 'Cliente', 'Valor (R$)', 'Estágio', 'Prazo'],
-      rows: state.projects.map(p => [p.title, p.clientName, p.value, p.stage, p.deadlineDate])
+      title: 'Relatório de Projetos em Produção',
+      headers: ['Projeto', 'Cliente', 'Serviço', 'Valor', 'Estágio', 'Prioridade', 'Prazo'],
+      rows: projects.map(p => [
+        p.title || '',
+        p.clientName || '-',
+        p.serviceName || '-',
+        formatCurrency(p.value || 0),
+        p.stage || '',
+        (p.priority || '').toUpperCase(),
+        formatDate(p.deadlineDate)
+      ]),
+      summary: [
+        { label: 'Total de Projetos', value: projects.length },
+        { label: 'Projetos Ativos', value: projects.filter(p => p.stage !== 'entrega' && p.stage !== 'pago' && p.stage !== 'cancelado').length },
+        { label: 'Faturamento em Produção', value: formatCurrency(totalVal) }
+      ]
+    };
+  } else if (type === 'servicos') {
+    const services = state.services || [];
+    return {
+      title: 'Relatório do Catálogo de Serviços',
+      headers: ['Serviço', 'Categoria', 'Preço Base', 'Prazo Estimado', 'Descrição'],
+      rows: services.map(s => [
+        s.name || '',
+        s.category || 'Geral',
+        formatCurrency(s.price || 0),
+        s.estimatedDays ? `${s.estimatedDays} dias` : '-',
+        s.description || ''
+      ]),
+      summary: [
+        { label: 'Serviços Ativos', value: services.length },
+        { label: 'Média de Preço Base', value: formatCurrency(services.length > 0 ? services.reduce((a, b) => a + (b.price || 0), 0) / services.length : 0) }
+      ]
+    };
+  } else if (type === 'produtividade') {
+    const tasks = state.tasks || [];
+    const habits = state.habits || [];
+    return {
+      title: 'Relatório de Produtividade & Rotina',
+      headers: ['Tipo', 'Título', 'Prioridade / Categoria', 'Status / Sequência', 'Prazo'],
+      rows: [
+        ...tasks.map(t => ['Tarefa', t.title, (t.priority || '').toUpperCase(), t.status === 'done' ? 'Concluída' : 'Pendente', formatDate(t.dueDate)]),
+        ...habits.map(h => ['Hábito', h.name, h.category || 'Geral', `${h.streak || 0} dias streak`, h.completedToday ? 'Concluído Hoje' : 'Pendente'])
+      ],
+      summary: [
+        { label: 'Total de Tarefas', value: tasks.length },
+        { label: 'Tarefas Concluídas', value: tasks.filter(t => t.status === 'done').length },
+        { label: 'Total de Hábitos', value: habits.length }
+      ]
     };
   } else {
+    const goals = state.goals || [];
     return {
-      title: `Relatório de ${type}`,
-      headers: ['Identificação', 'Referência', 'Valor (R$)', 'Status'],
-      rows: state.proposals.map(p => [p.number, p.clientName, p.finalValue || p.value, p.status])
+      title: 'Relatório Estratégico de Metas',
+      headers: ['Meta', 'Âmbito', 'Categoria', 'Valor Atual', 'Valor Alvo', 'Progresso', 'Prazo'],
+      rows: goals.map(g => [
+        g.title || '',
+        g.scope === 'business' ? 'Empresa' : 'Pessoal',
+        g.category || 'Geral',
+        formatCurrency(g.currentValue || 0),
+        formatCurrency(g.targetValue || 0),
+        `${Math.min(100, Math.round(((g.currentValue || 0) / (g.targetValue || 1)) * 100))}%`,
+        formatDate(g.deadline)
+      ]),
+      summary: [
+        { label: 'Total de Metas', value: goals.length },
+        { label: 'Metas Atingidas', value: goals.filter(g => (g.currentValue || 0) >= (g.targetValue || 1)).length }
+      ]
     };
   }
 }

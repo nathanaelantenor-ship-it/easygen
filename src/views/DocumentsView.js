@@ -2,8 +2,10 @@ import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatDate } from '../utils/formatters.js';
+import { storageService } from '../services/storageService.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
-let currentPath = []; // array of path segments, e.g. ['Clientes', 'Pulse Academia & Cross', 'Contratos']
+let currentPath = []; // array of path segments, e.g. ['Clientes', 'Nexus Digital', 'Contratos']
 let searchQuery = '';
 let viewMode = 'grid'; // 'grid' | 'list'
 
@@ -11,8 +13,6 @@ export function renderDocumentsView(container, onNavigate) {
   const state = store.getState();
   const { documents = [], clients = [], projects = [] } = state;
 
-  // Build standard and virtual folders structure
-  // Root level: Clientes, Modelos & Templates, Administrativo, Pessoal
   function getFolderContents() {
     let files = [];
     let subfolders = [];
@@ -26,7 +26,6 @@ export function renderDocumentsView(container, onNavigate) {
         { name: 'Pessoal', icon: 'folder-heart', count: documents.filter(d => d.category === 'Pessoal').length, type: 'system' }
       ];
 
-      // Custom folders if any
       if (state.customFolders) {
         state.customFolders.filter(f => !f.parentId).forEach(f => {
           subfolders.push({ name: f.name, icon: 'folder', count: 0, type: 'custom', id: f.id });
@@ -36,7 +35,6 @@ export function renderDocumentsView(container, onNavigate) {
       files = documents.filter(d => !d.clientId && !d.folder);
     } else if (currentPath[0] === 'Clientes') {
       if (currentPath.length === 1) {
-        // Clientes root -> List all clients as folders
         subfolders = clients.map(c => {
           const clientDocs = documents.filter(d => d.clientId === c.id || d.clientName === c.name);
           return {
@@ -47,7 +45,6 @@ export function renderDocumentsView(container, onNavigate) {
           };
         });
       } else if (currentPath.length === 2) {
-        // Inside a specific client -> standard client subfolders
         const clientName = currentPath[1];
         const clientObj = clients.find(c => c.name === clientName);
         const subCategories = ['Contratos', 'Briefings', 'Financeiro', 'Projetos', 'Entregas', 'Arquivos Finais'];
@@ -65,17 +62,11 @@ export function renderDocumentsView(container, onNavigate) {
             return false;
           }).length;
 
-          return {
-            name: sub,
-            icon: 'subfolder',
-            count
-          };
+          return { name: sub, icon: 'subfolder', count };
         });
 
-        // Loose files for this client
         files = documents.filter(d => (d.clientId === clientObj?.id || d.clientName === clientName) && !d.subfolder);
       } else if (currentPath.length === 3) {
-        // Inside a client subfolder (e.g. Clientes > Nexus > Contratos)
         const clientName = currentPath[1];
         const clientObj = clients.find(c => c.name === clientName);
         const sub = currentPath[2];
@@ -101,22 +92,43 @@ export function renderDocumentsView(container, onNavigate) {
       files = documents.filter(d => d.category === 'Pessoal');
     }
 
-    // Apply search filter if active
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase().trim();
       files = documents.filter(d => 
-        d.name.toLowerCase().includes(q) || 
-        (d.clientName && d.clientName.toLowerCase().includes(q)) ||
+        (d.name && d.name.toLowerCase().includes(q)) || 
         (d.category && d.category.toLowerCase().includes(q)) ||
-        (d.projectName && d.projectName.toLowerCase().includes(q))
+        (d.clientName && d.clientName.toLowerCase().includes(q))
       );
       subfolders = [];
     }
 
-    return { subfolders, files };
+    return { files, subfolders };
   }
 
-  const { subfolders, files } = getFolderContents();
+  const { files, subfolders } = getFolderContents();
+
+  function getFileIcon(format) {
+    const f = (format || '').toLowerCase();
+    if (['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'].includes(f)) {
+      return { icon: '🖼️', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' };
+    }
+    if (f === 'pdf') {
+      return { icon: '📄', color: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' };
+    }
+    if (['xls', 'xlsx', 'csv'].includes(f)) {
+      return { icon: '📊', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' };
+    }
+    if (['doc', 'docx', 'txt'].includes(f)) {
+      return { icon: '📝', color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' };
+    }
+    if (['zip', 'rar'].includes(f)) {
+      return { icon: '📦', color: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' };
+    }
+    if (f === 'link' || f === 'fig') {
+      return { icon: '🔗', color: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' };
+    }
+    return { icon: '📁', color: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300' };
+  }
 
   container.innerHTML = `
     <div class="space-y-6">
@@ -129,23 +141,23 @@ export function renderDocumentsView(container, onNavigate) {
               ${documents.length} arquivos
             </span>
           </div>
-          <p class="text-xs text-zinc-500 mt-1">Pastas inteligentes por cliente, contratos, briefings, arquivos finais e links externos (Figma, Drive, Notion).</p>
+          <p class="text-xs text-zinc-500 mt-1">Upload real de arquivos (PDF, PNG, JPG, XLSX, DOCX) com preview, download e pastas por cliente.</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
+          ${renderExportButtonHtml('docs-export-dropdown', 'Exportar')}
           <button id="doc-new-folder-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-xl text-xs font-semibold transition-colors border border-zinc-200 dark:border-zinc-700">
             <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
             <span>Nova Pasta</span>
           </button>
-          <button id="doc-upload-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs">
+          <button id="doc-upload-btn" class="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            <span>Novo Arquivo / Link</span>
+            <span>+ Adicionar Documento</span>
           </button>
         </div>
       </div>
 
       <!-- Breadcrumbs & Barra de Navegação -->
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl shadow-2xs">
-        <!-- Breadcrumbs -->
         <div class="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 overflow-x-auto py-1">
           <button data-path-idx="-1" class="flex items-center gap-1 hover:text-blue-600 font-medium ${currentPath.length === 0 ? 'text-zinc-900 dark:text-zinc-100 font-bold' : ''}">
             <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
@@ -159,25 +171,24 @@ export function renderDocumentsView(container, onNavigate) {
           `).join('')}
         </div>
 
-        <!-- Barra de Busca e Visualização -->
         <div class="flex items-center gap-2">
-          <div class="relative w-full sm:w-56">
+          <div class="relative">
             <input 
-              id="docs-search-input" 
+              id="doc-search-input" 
               type="text" 
+              placeholder="Buscar arquivos ou pastas..." 
               value="${searchQuery}" 
-              placeholder="Buscar em todos os arquivos..." 
-              class="w-full pl-8 pr-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600"
+              class="w-48 sm:w-64 pl-8 pr-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs focus:outline-none focus:border-blue-600 text-zinc-800 dark:text-zinc-200"
             />
-            <svg class="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <svg class="w-4 h-4 text-zinc-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
           </div>
 
-          <div class="flex items-center bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200 dark:border-zinc-700 shrink-0">
-            <button id="view-grid-btn" class="p-1.5 rounded-md ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-900 text-blue-600 shadow-2xs' : 'text-zinc-400 hover:text-zinc-700'}">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+          <div class="flex items-center bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 border border-zinc-200 dark:border-zinc-700">
+            <button id="view-mode-grid-btn" class="p-1.5 rounded-lg ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-700 text-blue-600 shadow-2xs' : 'text-zinc-400 hover:text-zinc-700'}">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
             </button>
-            <button id="view-list-btn" class="p-1.5 rounded-md ${viewMode === 'list' ? 'bg-white dark:bg-zinc-900 text-blue-600 shadow-2xs' : 'text-zinc-400 hover:text-zinc-700'}">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            <button id="view-mode-list-btn" class="p-1.5 rounded-lg ${viewMode === 'list' ? 'bg-white dark:bg-zinc-700 text-blue-600 shadow-2xs' : 'text-zinc-400 hover:text-zinc-700'}">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
           </div>
         </div>
@@ -185,93 +196,80 @@ export function renderDocumentsView(container, onNavigate) {
 
       <!-- Pastas -->
       ${subfolders.length > 0 ? `
-        <div class="space-y-3">
-          <div class="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-            <span>Pastas (${subfolders.length})</span>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            ${subfolders.map(folder => `
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-3">Pastas</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            ${subfolders.map(fld => `
               <div 
-                data-folder-name="${folder.name}" 
-                class="folder-card p-3.5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 hover:border-blue-500 dark:hover:border-blue-500 cursor-pointer shadow-2xs transition-all flex items-center justify-between group"
+                data-folder-name="${fld.name}" 
+                class="folder-card p-3.5 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl hover:border-blue-500/60 dark:hover:border-blue-500/60 transition-all cursor-pointer shadow-2xs hover:shadow-xs group flex items-center gap-3 select-none"
               >
-                <div class="flex items-center gap-3 overflow-hidden">
-                  <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-                  </div>
-                  <div class="truncate">
-                    <h4 class="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate group-hover:text-blue-600 transition-colors">${folder.name}</h4>
-                    <span class="text-[11px] text-zinc-400 font-medium">${folder.count} item${folder.count === 1 ? '' : 's'}</span>
-                  </div>
+                <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform text-lg">
+                  📁
                 </div>
-                <svg class="w-4 h-4 text-zinc-300 dark:text-zinc-600 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                <div class="overflow-hidden">
+                  <h4 class="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate">${fld.name}</h4>
+                  <span class="text-[10px] text-zinc-400">${fld.count} ${fld.count === 1 ? 'item' : 'itens'}</span>
+                </div>
               </div>
             `).join('')}
           </div>
         </div>
       ` : ''}
 
-      <!-- Arquivos e Documentos -->
-      <div class="space-y-3">
-        <div class="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-          <span class="flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Arquivos (${files.length})
-          </span>
-          ${currentPath.length > 0 ? `
-            <span class="text-[11px] text-zinc-400 font-normal">Local: ${currentPath.join(' / ')}</span>
-          ` : ''}
+      <!-- Arquivos -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-400">Arquivos (${files.length})</h3>
         </div>
 
         ${files.length === 0 ? `
-          <div class="text-center py-12 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
-            <div class="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 mx-auto mb-2 text-lg">📄</div>
-            <p class="text-xs text-zinc-500 font-medium">Nenhum arquivo nesta pasta.</p>
-            <p class="text-[11px] text-zinc-400 mt-0.5">Clique em "Novo Arquivo / Link" acima para adicionar.</p>
+          <div class="p-12 text-center bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 space-y-3">
+            <div class="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-xl mx-auto">
+              📄
+            </div>
+            <p class="text-xs font-medium text-zinc-500">Nenhum arquivo encontrado nesta pasta.</p>
+            <button id="empty-upload-btn" class="px-3.5 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition-colors shadow-2xs">
+              + Fazer Upload de Arquivo
+            </button>
           </div>
         ` : viewMode === 'grid' ? `
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             ${files.map(doc => {
-              const isLink = doc.format === 'link' || (doc.url && (doc.url.startsWith('http://') || doc.url.startsWith('https://')));
+              const fileInfo = getFileIcon(doc.format || doc.extension);
               return `
-                <div class="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 shadow-2xs hover:border-blue-400 dark:hover:border-blue-600 transition-all flex flex-col justify-between group">
+                <div class="doc-card p-4 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl hover:border-blue-500/50 transition-all shadow-2xs group flex flex-col justify-between">
                   <div>
-                    <div class="flex items-start justify-between gap-2 mb-2.5">
-                      <div class="w-10 h-10 rounded-xl ${isLink ? 'bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400'} flex items-center justify-center font-bold text-xs uppercase shrink-0">
-                        ${isLink ? '🔗' : (doc.format || 'doc')}
+                    <div class="flex items-start justify-between gap-2 mb-3">
+                      <div class="w-10 h-10 rounded-xl ${fileInfo.color} flex items-center justify-center text-lg shrink-0">
+                        ${fileInfo.icon}
                       </div>
-                      <span class="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-2 py-0.5 rounded-md font-medium border border-zinc-200/60 dark:border-zinc-700">
-                        ${doc.category || 'Geral'}
+                      <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                        ${doc.format || doc.extension || 'ARQ'}
                       </span>
                     </div>
 
-                    <h4 class="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate group-hover:text-blue-600 transition-colors" title="${doc.name}">${doc.name}</h4>
-                    
-                    <div class="text-[11px] text-zinc-400 mt-1.5 space-y-0.5">
-                      ${doc.clientName ? `<div class="truncate">Cliente: <span class="text-zinc-700 dark:text-zinc-300 font-medium">${doc.clientName}</span></div>` : ''}
-                      ${doc.projectName ? `<div class="truncate">Projeto: <span class="text-zinc-700 dark:text-zinc-300">${doc.projectName}</span></div>` : ''}
-                      ${doc.notes ? `<div class="truncate text-zinc-500 italic mt-1">"${doc.notes}"</div>` : ''}
+                    <h4 class="font-bold text-xs text-zinc-900 dark:text-zinc-100 line-clamp-2 leading-snug mb-1" title="${doc.name}">
+                      ${doc.name}
+                    </h4>
+                    <div class="text-[11px] text-zinc-400 space-y-0.5">
+                      <div>${doc.category} • <span class="font-semibold text-zinc-600 dark:text-zinc-300">${doc.size || '1 MB'}</span></div>
+                      ${doc.clientName ? `<div class="text-blue-600 dark:text-blue-400 font-medium truncate">Cliente: ${doc.clientName}</div>` : ''}
+                      ${doc.projectName ? `<div class="truncate">Proj: ${doc.projectName}</div>` : ''}
                     </div>
                   </div>
 
-                  <div class="pt-3 mt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400">
-                    <span>${doc.size || '1.0 MB'} • ${formatDate(doc.uploadDate || doc.createdAt)}</span>
+                  <div class="flex items-center justify-between pt-3 mt-3 border-t border-zinc-100 dark:border-zinc-800 text-xs">
+                    <span class="text-[10px] text-zinc-400">${formatDate(doc.uploadDate || doc.createdAt)}</span>
                     <div class="flex items-center gap-1">
-                      ${isLink ? `
-                        <a href="${doc.url || '#'}" target="_blank" rel="noopener noreferrer" class="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors" title="Abrir link externo">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                        </a>
-                      ` : `
-                        <button data-action="preview" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-blue-600 rounded transition-colors" title="Visualizar">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                        </button>
-                        <button data-action="download" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-emerald-600 rounded transition-colors" title="Baixar">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                        </button>
-                      `}
-                      <button data-action="delete" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-rose-600 rounded transition-colors" title="Excluir">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      <button data-action="preview" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-blue-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors" title="Visualizar">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                      </button>
+                      <button data-action="download" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-emerald-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors" title="Baixar">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                      </button>
+                      <button data-action="delete" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors" title="Excluir">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                       </button>
                     </div>
                   </div>
@@ -280,56 +278,44 @@ export function renderDocumentsView(container, onNavigate) {
             }).join('')}
           </div>
         ` : `
-          <!-- Tabela Modo Lista -->
+          <!-- Visualização em Tabela -->
           <div class="bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-2xs">
             <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs text-zinc-600 dark:text-zinc-300">
-                <thead class="bg-zinc-50 dark:bg-zinc-800/60 text-zinc-400 uppercase text-[10px] font-semibold border-b border-zinc-200 dark:border-zinc-800">
+              <table class="w-full text-left text-xs text-zinc-600 dark:text-zinc-400">
+                <thead class="bg-zinc-50 dark:bg-zinc-850 text-zinc-900 dark:text-zinc-200 border-b border-zinc-200 dark:border-zinc-800 font-semibold">
                   <tr>
-                    <th class="py-3 px-4">Nome do Arquivo</th>
-                    <th class="py-3 px-3">Categoria</th>
-                    <th class="py-3 px-3">Cliente / Projeto</th>
-                    <th class="py-3 px-3">Data</th>
-                    <th class="py-3 px-3">Tamanho</th>
-                    <th class="py-3 px-4 text-right">Ações</th>
+                    <th class="p-3.5">Nome do Arquivo</th>
+                    <th class="p-3.5">Categoria</th>
+                    <th class="p-3.5">Cliente / Projeto</th>
+                    <th class="p-3.5">Tamanho</th>
+                    <th class="p-3.5">Data</th>
+                    <th class="p-3.5 text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800/60 font-medium">
+                <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
                   ${files.map(doc => {
-                    const isLink = doc.format === 'link' || (doc.url && (doc.url.startsWith('http://') || doc.url.startsWith('https://')));
+                    const fileInfo = getFileIcon(doc.format || doc.extension);
                     return `
-                      <tr class="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 transition-colors">
-                        <td class="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2.5">
-                          <span class="w-6 h-6 rounded-md ${isLink ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'} text-[10px] font-bold flex items-center justify-center uppercase shrink-0">
-                            ${isLink ? '🔗' : (doc.format || 'doc')}
-                          </span>
-                          <span class="truncate max-w-xs">${doc.name}</span>
+                      <tr class="hover:bg-zinc-50/70 dark:hover:bg-zinc-850/50 transition-colors">
+                        <td class="p-3.5 font-bold text-zinc-900 dark:text-zinc-100">
+                          <div class="flex items-center gap-2">
+                            <span class="text-base">${fileInfo.icon}</span>
+                            <span class="truncate max-w-xs">${doc.name}</span>
+                          </div>
                         </td>
-                        <td class="py-3 px-3">
-                          <span class="px-2 py-0.5 rounded text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-                            ${doc.category || 'Geral'}
-                          </span>
-                        </td>
-                        <td class="py-3 px-3 text-zinc-500">
-                          ${doc.clientName || '—'}${doc.projectName ? ` / ${doc.projectName}` : ''}
-                        </td>
-                        <td class="py-3 px-3 text-zinc-400 font-mono">${formatDate(doc.uploadDate || doc.createdAt)}</td>
-                        <td class="py-3 px-3 text-zinc-400">${doc.size || '1.0 MB'}</td>
-                        <td class="py-3 px-4 text-right">
-                          <div class="inline-flex items-center gap-1">
-                            ${isLink ? `
-                              <a href="${doc.url || '#'}" target="_blank" rel="noopener noreferrer" class="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Abrir link">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                              </a>
-                            ` : `
-                              <button data-action="preview" data-id="${doc.id}" class="p-1 text-zinc-400 hover:text-blue-600 rounded" title="Visualizar">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                              </button>
-                              <button data-action="download" data-id="${doc.id}" class="p-1 text-zinc-400 hover:text-emerald-600 rounded" title="Baixar">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                              </button>
-                            `}
-                            <button data-action="delete" data-id="${doc.id}" class="p-1 text-zinc-400 hover:text-rose-600 rounded" title="Excluir">
+                        <td class="p-3.5">${doc.category}</td>
+                        <td class="p-3.5 text-zinc-500">${doc.clientName || doc.projectName || '-'}</td>
+                        <td class="p-3.5 font-medium">${doc.size || '1 MB'}</td>
+                        <td class="p-3.5">${formatDate(doc.uploadDate || doc.createdAt)}</td>
+                        <td class="p-3.5 text-right">
+                          <div class="flex items-center justify-end gap-1">
+                            <button data-action="preview" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-blue-600 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Visualizar">
+                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                            </button>
+                            <button data-action="download" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-emerald-600 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Baixar">
+                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            </button>
+                            <button data-action="delete" data-id="${doc.id}" class="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Excluir">
                               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                             </button>
                           </div>
@@ -346,97 +332,112 @@ export function renderDocumentsView(container, onNavigate) {
     </div>
   `;
 
-  // Attach Events
-  // Folder Navigation clicks
-  container.querySelectorAll('.folder-card').forEach(card => {
-    card.onclick = () => {
-      const folderName = card.getAttribute('data-folder-name');
-      currentPath.push(folderName);
-      searchQuery = '';
-      renderDocumentsView(container, onNavigate);
-    };
-  });
-
-  // Breadcrumbs clicks
+  // Breadcrumbs navigation
   container.querySelectorAll('button[data-path-idx]').forEach(btn => {
     btn.onclick = () => {
-      const idx = parseInt(btn.getAttribute('data-path-idx'), 10);
+      const idx = parseInt(btn.getAttribute('data-path-idx'));
       if (idx === -1) {
         currentPath = [];
       } else {
         currentPath = currentPath.slice(0, idx + 1);
       }
-      searchQuery = '';
+      renderDocumentsView(container, onNavigate);
+    };
+  });
+
+  // Folder click navigation
+  container.querySelectorAll('.folder-card').forEach(card => {
+    card.onclick = () => {
+      const folderName = card.getAttribute('data-folder-name');
+      currentPath.push(folderName);
       renderDocumentsView(container, onNavigate);
     };
   });
 
   // Search input
-  const searchInput = container.querySelector('#docs-search-input');
+  const searchInput = container.querySelector('#doc-search-input');
   if (searchInput) {
     searchInput.oninput = (e) => {
       searchQuery = e.target.value;
       renderDocumentsView(container, onNavigate);
-      const reInput = container.querySelector('#docs-search-input');
-      if (reInput) {
-        reInput.focus();
-        reInput.setSelectionRange(reInput.value.length, reInput.value.length);
-      }
     };
   }
 
-  // View mode toggle
-  const gridBtn = container.querySelector('#view-grid-btn');
-  const listBtn = container.querySelector('#view-list-btn');
-  if (gridBtn && listBtn) {
-    gridBtn.onclick = () => {
-      viewMode = 'grid';
-      renderDocumentsView(container, onNavigate);
-    };
-    listBtn.onclick = () => {
-      viewMode = 'list';
-      renderDocumentsView(container, onNavigate);
-    };
-  }
+  // View mode toggles
+  const gridBtn = container.querySelector('#view-mode-grid-btn');
+  const listBtn = container.querySelector('#view-mode-list-btn');
+  if (gridBtn) gridBtn.onclick = () => { viewMode = 'grid'; renderDocumentsView(container, onNavigate); };
+  if (listBtn) listBtn.onclick = () => { viewMode = 'list'; renderDocumentsView(container, onNavigate); };
 
   // Actions on documents
   container.querySelectorAll('button[data-action]').forEach(btn => {
-    btn.onclick = () => {
+    btn.onclick = async () => {
       const action = btn.getAttribute('data-action');
       const id = btn.getAttribute('data-id');
       const doc = documents.find(d => d.id === id);
       if (!doc) return;
 
       if (action === 'preview') {
+        const objectUrl = await storageService.getObjectUrl(id);
+        const ext = (doc.extension || doc.format || '').toLowerCase();
+        const isImage = ['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'].includes(ext);
+        const isPdf = ext === 'pdf';
+
         modal.open({
           title: `Visualização: ${doc.name}`,
           content: `
-            <div class="p-6 text-center space-y-4">
-              <div class="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-lg mx-auto">
-                ${(doc.format || 'doc').toUpperCase()}
+            <div class="space-y-4">
+              <div class="flex items-center justify-between text-xs text-zinc-500 pb-2 border-b border-zinc-200 dark:border-zinc-800">
+                <span>Categoria: <strong>${doc.category || 'Geral'}</strong> • Tamanho: <strong>${doc.size || '1.0 MB'}</strong></span>
+                <span>Data: ${formatDate(doc.uploadDate || doc.createdAt)}</span>
               </div>
-              <div>
-                <h4 class="font-bold text-sm text-zinc-900 dark:text-zinc-100">${doc.name}</h4>
-                <p class="text-xs text-zinc-400 mt-1">Categoria: ${doc.category || 'Geral'} • Tamanho: ${doc.size || '1.0 MB'}</p>
-                <p class="text-xs text-zinc-500 mt-1">Vinculado a: ${doc.clientName || 'Geral'}</p>
-                ${doc.notes ? `<div class="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-xl text-xs text-zinc-600 dark:text-zinc-400 text-left mt-3"><strong>Anotações:</strong> ${doc.notes}</div>` : ''}
-              </div>
+
+              ${isImage && objectUrl ? `
+                <div class="flex items-center justify-center p-2 bg-zinc-50 dark:bg-zinc-850 rounded-xl overflow-hidden max-h-[500px]">
+                  <img src="${objectUrl}" alt="${doc.name}" class="max-w-full max-h-[480px] object-contain rounded-lg shadow-sm" />
+                </div>
+              ` : isPdf && objectUrl ? `
+                <div class="w-full h-[500px] bg-zinc-100 rounded-xl overflow-hidden">
+                  <iframe src="${objectUrl}#toolbar=0" class="w-full h-full border-0"></iframe>
+                </div>
+              ` : `
+                <div class="p-8 text-center bg-zinc-50 dark:bg-zinc-850 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                  <div class="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-2xl mx-auto">
+                    ${(doc.extension || doc.format || 'DOC').toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 class="font-bold text-sm text-zinc-900 dark:text-zinc-100">${doc.name}</h4>
+                    <p class="text-xs text-zinc-400 mt-1">Este formato pode ser aberto após o download.</p>
+                  </div>
+                  <button id="modal-preview-download-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs">
+                    Baixar Arquivo Agora
+                  </button>
+                </div>
+              `}
+
+              ${doc.notes ? `<div class="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-xl text-xs text-zinc-600 dark:text-zinc-400"><strong>Anotações:</strong> ${doc.notes}</div>` : ''}
             </div>
           `,
-          size: 'md'
+          size: isPdf || isImage ? 'lg' : 'md'
         });
+
+        const previewDlBtn = document.getElementById('modal-preview-download-btn');
+        if (previewDlBtn) {
+          previewDlBtn.onclick = async () => {
+            await storageService.downloadFile(doc.id, doc.name);
+            toast.success(`Download de ${doc.name} concluído!`);
+          };
+        }
       } else if (action === 'download') {
-        const dummyBlob = new Blob([`Arquivo: ${doc.name}\nCategoria: ${doc.category}\nCliente: ${doc.clientName || 'Geral'}\nNotas: ${doc.notes || 'Nenhuma'}`], { type: 'text/plain' });
-        const url = URL.createObjectURL(dummyBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = doc.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        toast.success(`Download de ${doc.name} iniciado!`);
+        try {
+          await storageService.downloadFile(id, doc.name);
+          toast.success(`Download de ${doc.name} iniciado!`);
+        } catch (e) {
+          toast.error('Erro ao baixar arquivo do armazenamento local.');
+        }
       } else if (action === 'delete') {
-        if (confirm(`Deseja remover o arquivo "${doc.name}"?`)) {
+        if (confirm(`Deseja remover o arquivo "${doc.name}" permanentemente?`)) {
+          await storageService.deleteFile(id);
           store.deleteDocument(id);
           toast.info('Documento removido da Central.');
           renderDocumentsView(container, onNavigate);
@@ -453,6 +454,13 @@ export function renderDocumentsView(container, onNavigate) {
     };
   }
 
+  const emptyUploadBtn = container.querySelector('#empty-upload-btn');
+  if (emptyUploadBtn) {
+    emptyUploadBtn.onclick = () => {
+      openUploadDocModal(() => renderDocumentsView(container, onNavigate));
+    };
+  }
+
   // New folder button
   const newFolderBtn = container.querySelector('#doc-new-folder-btn');
   if (newFolderBtn) {
@@ -460,6 +468,35 @@ export function renderDocumentsView(container, onNavigate) {
       openNewFolderModal(() => renderDocumentsView(container, onNavigate));
     };
   }
+
+  // Universal Export Dropdown
+  bindExportButton(container, 'docs-export-dropdown', () => {
+    const headers = ['Nome', 'Categoria', 'Formato', 'Tamanho', 'Cliente', 'Projeto', 'Data de Upload'];
+    const rows = files.map(d => [
+      d.name,
+      d.category || 'Geral',
+      (d.extension || d.format || 'bin').toUpperCase(),
+      d.size || '1 MB',
+      d.clientName || '-',
+      d.projectName || '-',
+      formatDate(d.uploadDate || d.createdAt)
+    ]);
+
+    const summary = [
+      { label: 'Total de Arquivos Listados', value: files.length },
+      { label: 'Total Geral na Central', value: documents.length },
+      { label: 'Pasta Atual', value: currentPath.join(' / ') || 'Início' }
+    ];
+
+    return {
+      filename: `documentos_${new Date().toISOString().split('T')[0]}`,
+      title: 'Inventário da Central de Documentos',
+      headers,
+      rows,
+      summary,
+      filters: `Caminho: ${currentPath.join(' / ') || 'Início'}`
+    };
+  });
 }
 
 function openNewFolderModal(onSuccess) {
@@ -500,10 +537,10 @@ function openNewFolderModal(onSuccess) {
   };
 }
 
+// Modal de Upload com seletor real do SO
 function openUploadDocModal(onSuccess) {
-  const { clients, projects } = store.getState();
+  const { clients, projects, deliveries = [] } = store.getState();
 
-  // If user is inside a client folder, pre-select that client
   let defaultClientId = '';
   let defaultSubfolder = '';
   if (currentPath[0] === 'Clientes' && currentPath.length >= 2) {
@@ -515,68 +552,65 @@ function openUploadDocModal(onSuccess) {
   }
 
   const content = `
-    <form id="docs-upload-form" class="space-y-3.5">
-      <!-- Tipo: Arquivo vs Link Externo -->
+    <form id="docs-upload-form" class="space-y-4">
+      <!-- Seletor de Arquivo Real do SO -->
       <div>
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1.5">Tipo de Registro</label>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="flex items-center gap-2 p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50/50 dark:has-[:checked]:bg-blue-950/40">
-            <input type="radio" name="recordType" value="file" checked class="text-blue-600" />
-            <span class="text-xs font-semibold text-zinc-800 dark:text-zinc-200">📁 Arquivo Local</span>
-          </label>
-          <label class="flex items-center gap-2 p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50/50 dark:has-[:checked]:bg-blue-950/40">
-            <input type="radio" name="recordType" value="link" class="text-blue-600" />
-            <span class="text-xs font-semibold text-zinc-800 dark:text-zinc-200">🔗 Link Externo</span>
-          </label>
+        <label class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">Selecionar Arquivo do Dispositivo *</label>
+        <div id="dropzone-area" class="border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-blue-600 dark:hover:border-blue-500 rounded-2xl p-5 text-center cursor-pointer transition-colors bg-zinc-50/60 dark:bg-zinc-850/50">
+          <input type="file" id="real-file-input" accept=".jpg,.jpeg,.png,.webp,.pdf,.xls,.xlsx,.csv,.doc,.docx" class="hidden" />
+          <div id="dropzone-prompt">
+            <svg class="w-8 h-8 text-blue-600 dark:text-blue-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+            <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100 block">Clique para escolher do computador ou dispositivo</span>
+            <span class="text-[11px] text-zinc-400 block mt-0.5">Suporta PDF, JPG, PNG, WEBP, XLSX, CSV, DOCX</span>
+          </div>
+          <div id="dropzone-file-info" class="hidden text-left p-2.5 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-800">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 overflow-hidden">
+                <span class="text-lg" id="selected-file-icon">📄</span>
+                <div class="overflow-hidden">
+                  <div class="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate" id="selected-file-name">arquivo.pdf</div>
+                  <div class="text-[10px] text-zinc-400" id="selected-file-size">0 KB</div>
+                </div>
+              </div>
+              <button type="button" id="btn-remove-selected-file" class="p-1 text-zinc-400 hover:text-rose-600">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       <div>
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Nome do Documento / Arquivo *</label>
-        <input required name="name" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100" placeholder="Ex: Contrato_Prestacao_Nexus.pdf">
-      </div>
-
-      <div id="url-field-group" class="hidden">
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">URL / Link Externo (Figma, Drive, Notion, GitHub...)</label>
-        <input name="url" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100" placeholder="https://www.figma.com/file/...">
+        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Nome de Exibição do Documento *</label>
+        <input required id="doc-display-name" name="name" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100" placeholder="Ex: Contrato de Prestação de Serviços.pdf">
       </div>
 
       <div class="grid grid-cols-2 gap-2">
         <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Categoria *</label>
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Categoria / Pasta *</label>
           <select name="category" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200">
             <option value="Contratos">Contratos</option>
             <option value="Briefings">Briefings</option>
             <option value="Identidade visual">Identidade visual</option>
             <option value="Artes">Artes</option>
             <option value="Apresentações">Apresentações</option>
-            <option value="Financeiro">Financeiro / Notas Fiscais</option>
+            <option value="Financeiro">Financeiro / Comprovantes</option>
             <option value="Arquivos finais">Arquivos finais</option>
+            <option value="Referência">Referência & Inspiração</option>
             <option value="Templates">Templates & Modelos</option>
-            <option value="Pessoal">Pessoal</option>
-            <option value="Outros">Outros</option>
+            <option value="Outros" selected>Outros</option>
           </select>
         </div>
-        <div id="format-field-group">
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Formato</label>
-          <select name="format" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200">
-            <option value="pdf">PDF</option>
-            <option value="zip">ZIP / Arquivo</option>
-            <option value="png">PNG / JPG</option>
-            <option value="fig">FIG / Figma</option>
-            <option value="docx">DOCX / Word</option>
+        <div>
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Cliente Vinculado</label>
+          <select name="clientId" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200">
+            <option value="">Nenhum (Documento Geral)</option>
+            ${clients.map(c => `<option value="${c.id}" ${c.id === defaultClientId ? 'selected' : ''}>${c.name}</option>`).join('')}
           </select>
         </div>
       </div>
 
       <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Cliente Vinculado</label>
-          <select name="clientId" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200">
-            <option value="">Nenhum (Documento Geral)</option>
-            ${clients.map(c => `<option value="${c.id}" ${c.id === defaultClientId ? 'selected' : ''}>${c.name} (${c.company})</option>`).join('')}
-          </select>
-        </div>
         <div>
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Projeto Vinculado</label>
           <select name="projectId" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200">
@@ -584,20 +618,24 @@ function openUploadDocModal(onSuccess) {
             ${projects.map(p => `<option value="${p.id}">${p.title}</option>`).join('')}
           </select>
         </div>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Tamanho Estimado</label>
-        <input name="size" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200" placeholder="Ex: 2.4 MB" value="1.8 MB">
+        <div>
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Entrega Vinculada</label>
+          <select name="deliveryId" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200">
+            <option value="">Nenhuma</option>
+            ${deliveries.map(d => `<option value="${d.id}">${d.title}</option>`).join('')}
+          </select>
+        </div>
       </div>
 
       <div>
         <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Anotações / Descrição (Opcional)</label>
-        <textarea name="notes" rows="2" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200 resize-none" placeholder="Instruções de versão, tags ou links de backup..."></textarea>
+        <textarea name="notes" rows="2" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-800 dark:text-zinc-200 resize-none" placeholder="Detalhes da versão ou observações..."></textarea>
       </div>
 
       <div class="pt-2 flex justify-end gap-2">
-        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors">Salvar Documento</button>
+        <button type="submit" id="btn-submit-upload" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors">
+          Salvar Arquivo
+        </button>
       </div>
     </form>
   `;
@@ -609,48 +647,96 @@ function openUploadDocModal(onSuccess) {
   });
 
   const form = m.panel.querySelector('#docs-upload-form');
-  const typeRadios = form.querySelectorAll('input[name="recordType"]');
-  const urlGroup = form.querySelector('#url-field-group');
-  const formatGroup = form.querySelector('#format-field-group');
+  const dropzoneArea = form.querySelector('#dropzone-area');
+  const fileInput = form.querySelector('#real-file-input');
+  const promptEl = form.querySelector('#dropzone-prompt');
+  const infoEl = form.querySelector('#dropzone-file-info');
+  const nameInput = form.querySelector('#doc-display-name');
+  const fileNameEl = form.querySelector('#selected-file-name');
+  const fileSizeEl = form.querySelector('#selected-file-size');
+  const removeBtn = form.querySelector('#btn-remove-selected-file');
 
-  typeRadios.forEach(radio => {
-    radio.onchange = () => {
-      if (radio.value === 'link') {
-        urlGroup.classList.remove('hidden');
-        formatGroup.classList.add('hidden');
-      } else {
-        urlGroup.classList.add('hidden');
-        formatGroup.classList.remove('hidden');
-      }
-    };
-  });
+  let selectedRealFile = null;
 
-  form.onsubmit = (e) => {
+  dropzoneArea.onclick = (e) => {
+    if (e.target !== removeBtn && !removeBtn.contains(e.target)) {
+      fileInput.click();
+    }
+  };
+
+  fileInput.onchange = () => {
+    if (fileInput.files && fileInput.files[0]) {
+      selectedRealFile = fileInput.files[0];
+      nameInput.value = selectedRealFile.name;
+      fileNameEl.textContent = selectedRealFile.name;
+      fileSizeEl.textContent = storageService.formatBytes(selectedRealFile.size);
+      promptEl.classList.add('hidden');
+      infoEl.classList.remove('hidden');
+    }
+  };
+
+  removeBtn.onclick = (e) => {
+    e.stopPropagation();
+    selectedRealFile = null;
+    fileInput.value = '';
+    promptEl.classList.remove('hidden');
+    infoEl.classList.add('hidden');
+    nameInput.value = '';
+  };
+
+  form.onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
     const clientId = fd.get('clientId');
     const projectId = fd.get('projectId');
+    const deliveryId = fd.get('deliveryId');
     const selectedClient = clients.find(c => c.id === clientId);
     const selectedProj = projects.find(p => p.id === projectId);
-    const recordType = fd.get('recordType');
+    const displayName = fd.get('name').trim();
 
-    store.addDocument({
-      name: fd.get('name'),
-      category: fd.get('category'),
-      format: recordType === 'link' ? 'link' : fd.get('format'),
-      size: recordType === 'link' ? 'Link Web' : fd.get('size'),
-      url: fd.get('url') || '#',
-      clientId: clientId || null,
-      clientName: selectedClient ? selectedClient.name : null,
-      projectId: projectId || null,
-      projectName: selectedProj ? selectedProj.title : null,
-      notes: fd.get('notes') || '',
-      subfolder: defaultSubfolder || null
-    });
+    if (!selectedRealFile) {
+      toast.error('Por favor, selecione um arquivo do computador ou dispositivo.');
+      return;
+    }
 
-    store.addXP(10, 'Documento arquivado na Central');
-    toast.success('Documento arquivado com sucesso na Central!');
-    m.close();
-    if (onSuccess) onSuccess();
+    try {
+      const savedMeta = await storageService.saveFile(selectedRealFile, {
+        userId: store.currentUserId,
+        name: displayName,
+        category: fd.get('category'),
+        clientId: clientId || null,
+        clientName: selectedClient ? selectedClient.name : null,
+        projectId: projectId || null,
+        projectName: selectedProj ? selectedProj.title : null,
+        deliveryId: deliveryId || null,
+        notes: fd.get('notes') || '',
+        subfolder: defaultSubfolder || null
+      });
+
+      store.addDocument({
+        id: savedMeta.id,
+        name: savedMeta.name,
+        category: savedMeta.category,
+        format: savedMeta.extension,
+        extension: savedMeta.extension,
+        size: savedMeta.size,
+        clientId: savedMeta.clientId,
+        clientName: savedMeta.clientName,
+        projectId: savedMeta.projectId,
+        projectName: savedMeta.projectName,
+        deliveryId: savedMeta.deliveryId,
+        notes: savedMeta.notes,
+        subfolder: savedMeta.subfolder,
+        uploadDate: new Date().toISOString().split('T')[0]
+      });
+
+      store.addXP(10, 'Documento arquivado com upload real');
+      toast.success('Documento carregado e salvo com sucesso!');
+      m.close();
+      if (onSuccess) onSuccess();
+    } catch (err) {
+      console.error('Erro ao fazer upload:', err);
+      toast.error('Falha ao salvar arquivo no armazenamento local.');
+    }
   };
 }

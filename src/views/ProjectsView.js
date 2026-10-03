@@ -2,7 +2,7 @@ import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
-import { exportToCSV } from '../utils/exportUtils.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let projectViewMode = 'kanban'; // kanban | list
 
@@ -42,9 +42,8 @@ export function renderProjectsView(container, onNavigate) {
             <button id="proj-view-list" class="px-3 py-1 text-xs font-medium rounded-lg transition-colors ${projectViewMode === 'list' ? 'bg-white dark:bg-zinc-700 text-blue-600 shadow-2xs font-semibold' : 'text-zinc-500'}">Lista</button>
           </div>
 
-          <button id="proj-export-btn" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors">
-            Exportar
-          </button>
+          ${renderExportButtonHtml('projects-export-dropdown')}
+
           <button id="proj-new-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             <span>Novo Projeto</span>
@@ -103,12 +102,36 @@ export function renderProjectsView(container, onNavigate) {
     renderProjectsView(container, onNavigate);
   };
 
-  container.querySelector('#proj-export-btn').onclick = () => {
-    const headers = ['Título', 'Cliente', 'Serviço', 'Valor', 'Estágio', 'Prioridade', 'Prazo'];
-    const rows = projects.map(p => [p.title, p.clientName, p.serviceName, p.value, p.stage, p.priority, p.deadlineDate]);
-    exportToCSV('projetos_app_teste', rows, headers);
-    toast.success('Lista de projetos exportada!');
-  };
+  // Universal Export Handler
+  bindExportButton(container, 'projects-export-dropdown', () => {
+    const headers = ['Título', 'Cliente', 'Serviço', 'Valor', 'Estágio', 'Prioridade', 'Prazo', 'Progresso'];
+    const rows = projects.map(p => [
+      p.title || '',
+      p.clientName || '-',
+      p.serviceName || '-',
+      formatCurrency(p.value || 0),
+      p.stage || '',
+      (p.priority || '').toUpperCase(),
+      formatDate(p.deadlineDate),
+      `${p.progress || 0}%`
+    ]);
+
+    const summary = [
+      { label: 'Total de Projetos', value: projects.length },
+      { label: 'Projetos Ativos', value: activeCount },
+      { label: 'Concluídos', value: completedCount },
+      { label: 'Receita Total Contratada', value: formatCurrency(totalValue) }
+    ];
+
+    return {
+      filename: `projetos_${new Date().toISOString().split('T')[0]}`,
+      title: 'Relatório Geral de Gerenciamento de Projetos',
+      headers,
+      rows,
+      summary,
+      filters: `Total de Projetos: ${projects.length}`
+    };
+  });
 
   container.querySelector('#proj-new-btn').onclick = () => {
     openCreateProjectModal(() => renderProjectsView(container, onNavigate));

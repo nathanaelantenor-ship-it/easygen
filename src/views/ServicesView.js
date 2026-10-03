@@ -2,6 +2,7 @@ import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency } from '../utils/formatters.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let serviceCategoryFilter = 'all';
 
@@ -29,7 +30,8 @@ export function renderServicesView(container, onNavigate) {
           <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Catálogo de Serviços</h2>
           <p class="text-xs text-zinc-500">Serviços padronizados com precificação, entregáveis e geração direta de propostas.</p>
         </div>
-        <div>
+        <div class="flex items-center gap-2">
+          ${renderExportButtonHtml('services-export-dropdown')}
           <button id="services-new-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             <span>Novo Serviço</span>
@@ -176,6 +178,35 @@ export function renderServicesView(container, onNavigate) {
   container.querySelector('#services-new-btn').onclick = () => {
     openNewServiceModal(() => renderServicesView(container, onNavigate));
   };
+
+  // Universal Export Handler
+  bindExportButton(container, 'services-export-dropdown', () => {
+    const headers = ['Nome do Serviço', 'Categoria', 'Preço Base', 'Prazo Estimado', 'Descrição', 'Entregáveis'];
+    const rows = filteredServices.map(s => [
+      s.name || '',
+      s.category || 'Geral',
+      formatCurrency(s.price || 0),
+      s.estimatedDays ? `${s.estimatedDays} dias` : '-',
+      s.description || '',
+      (s.deliverables || []).join('; ')
+    ]);
+
+    const summary = [
+      { label: 'Serviços Cadastrados', value: services.length },
+      { label: 'Serviços Filtrados', value: filteredServices.length },
+      { label: 'Propostas Fechadas', value: approvedProposalsCount },
+      { label: 'Receita Gerada', value: formatCurrency(totalApprovedFromServices) }
+    ];
+
+    return {
+      filename: `catalogo_servicos_${new Date().toISOString().split('T')[0]}`,
+      title: 'Catálogo de Serviços & Tabela de Precificação',
+      headers,
+      rows,
+      summary,
+      filters: `Categoria: ${serviceCategoryFilter === 'all' ? 'Todas' : serviceCategoryFilter}`
+    };
+  });
 }
 
 function openNewProposalFromServiceModal(service, onNavigate) {

@@ -2,7 +2,7 @@ import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
-import { exportToCSV, exportToExcel } from '../utils/exportUtils.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let currentViewMode = 'kanban'; // kanban | table
 
@@ -34,10 +34,8 @@ export function renderCRMView(container, onNavigate) {
             <button id="view-table-btn" class="px-3 py-1 text-xs font-medium rounded-lg transition-colors ${currentViewMode === 'table' ? 'bg-white dark:bg-zinc-700 text-blue-600 shadow-2xs font-semibold' : 'text-zinc-500'}">Tabela</button>
           </div>
 
-          <!-- Export -->
-          <button id="crm-export-btn" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors">
-            Exportar
-          </button>
+          <!-- Universal Export Dropdown -->
+          ${renderExportButtonHtml('crm-export-dropdown')}
 
           <!-- New Lead -->
           <button id="crm-new-lead-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-medium transition-colors shadow-xs">
@@ -72,13 +70,35 @@ export function renderCRMView(container, onNavigate) {
     renderCRMView(container, onNavigate);
   };
 
-  // Export handler
-  container.querySelector('#crm-export-btn').onclick = () => {
+  // Universal Export Handler
+  bindExportButton(container, 'crm-export-dropdown', () => {
     const headers = ['Nome', 'Empresa', 'Telefone', 'Email', 'Canal', 'Serviço', 'Valor Estimado', 'Status', 'Data'];
-    const rows = leads.map(l => [l.name, l.company, l.phone, l.email, l.channel, l.serviceOfInterest, l.estimatedValue, l.status, l.createdAt]);
-    exportToCSV('leads_crm', rows, headers);
-    toast.success('Leads exportados com sucesso!');
-  };
+    const rows = leads.map(l => [
+      l.name || '',
+      l.company || '-',
+      l.phone || '-',
+      l.email || '-',
+      l.channel || '-',
+      l.serviceOfInterest || '-',
+      formatCurrency(l.estimatedValue || 0),
+      l.status || '',
+      formatDate(l.createdAt)
+    ]);
+    const totalPipeline = leads.reduce((acc, l) => acc + (l.estimatedValue || 0), 0);
+    const summary = [
+      { label: 'Total de Oportunidades', value: leads.length },
+      { label: 'Valor em Pipeline', value: formatCurrency(totalPipeline) },
+      { label: 'Ganhos (Aprovados)', value: leads.filter(l => l.status === 'aprovado').length }
+    ];
+    return {
+      filename: `leads_crm_${new Date().toISOString().split('T')[0]}`,
+      title: 'CRM & Funil de Oportunidades Comerciais',
+      headers,
+      rows,
+      summary,
+      filters: `Total de Leads: ${leads.length}`
+    };
+  });
 
   // New Lead handler
   container.querySelector('#crm-new-lead-btn').onclick = () => {

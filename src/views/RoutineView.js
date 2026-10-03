@@ -2,6 +2,7 @@ import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatDate } from '../utils/formatters.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let routineDisplayMode = 'priorities'; // 'priorities' | 'eisenhower'
 
@@ -33,6 +34,8 @@ export function renderRoutineView(container, onNavigate) {
             <button id="mode-priorities-btn" class="px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${routineDisplayMode === 'priorities' ? 'bg-white dark:bg-zinc-900 text-blue-600 shadow-2xs' : 'text-zinc-500'}">Prioridades</button>
             <button id="mode-eisenhower-btn" class="px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${routineDisplayMode === 'eisenhower' ? 'bg-white dark:bg-zinc-900 text-blue-600 shadow-2xs' : 'text-zinc-500'}">Eisenhower (2x2)</button>
           </div>
+
+          ${renderExportButtonHtml('routine-export-dropdown')}
 
           <button id="routine-new-task-btn" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-750 rounded-xl text-xs font-semibold text-zinc-700 dark:text-zinc-300 transition-colors shadow-2xs">
             + Nova Tarefa
@@ -257,6 +260,43 @@ export function renderRoutineView(container, onNavigate) {
       renderRoutineView(container, onNavigate);
     };
   }
+
+  // Universal Export Handler
+  bindExportButton(container, 'routine-export-dropdown', () => {
+    const headers = ['Tipo', 'Título / Nome', 'Prioridade / Categoria', 'Status / Streak', 'Prazo / Frequência'];
+    const taskRows = tasks.map(t => [
+      'Tarefa',
+      t.title || '',
+      (t.priority || '').toUpperCase(),
+      t.status === 'done' ? 'Concluída' : 'Pendente',
+      formatDate(t.dueDate)
+    ]);
+    const habitRows = habits.map(h => [
+      'Hábito',
+      h.name || '',
+      h.category || 'Geral',
+      `${h.streak || 0} dias de sequência`,
+      h.completedToday ? 'Concluído Hoje' : 'Pendente Hoje'
+    ]);
+    const rows = [...taskRows, ...habitRows];
+
+    const summary = [
+      { label: 'Total de Tarefas', value: tasks.length },
+      { label: 'Tarefas Concluídas', value: `${completedTasks} (${taskProgress}%)` },
+      { label: 'Total de Hábitos', value: habits.length },
+      { label: 'Hábitos Feitos Hoje', value: `${completedHabits} (${habitProgress}%)` },
+      { label: 'Progresso Consolidado', value: `${overallProgress}%` }
+    ];
+
+    return {
+      filename: `rotina_produtividade_${new Date().toISOString().split('T')[0]}`,
+      title: 'Rotina Diária, Tarefas & Monitoramento de Hábitos',
+      headers,
+      rows,
+      summary,
+      filters: `Visualização: ${routineDisplayMode === 'priorities' ? 'Prioridades' : 'Eisenhower 2x2'}`
+    };
+  });
 
   // Toggle Habit
   container.querySelectorAll('button[data-toggle-habit]').forEach(btn => {

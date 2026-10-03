@@ -586,71 +586,59 @@ export function renderDashboardView(container, onNavigate) {
 function renderCashflowChart(period = '30d') {
   if (!window.Chart) return;
   const ctx = document.getElementById('chart-dashboard-finance');
-  if (!ctx) return;
+  const container = ctx ? ctx.parentElement : null;
+  if (!ctx || !container) return;
 
   if (window._dashFinanceChart) {
     window._dashFinanceChart.destroy();
   }
 
-  const txs = (store.getState().transactions || []).filter(t => t.scope === 'business');
-  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  const curMonth = new Date().getMonth();
+  const cashflow = store.getFinancialCashflow('business', period);
 
-  let labels = [];
-  let incomeData = [];
-  let expenseData = [];
-  let projectedData = [];
-
-  if (period === '7d') {
-    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dStr = d.toISOString().split('T')[0];
-      labels.push(days[d.getDay()]);
-      const dayPaid = txs.filter(t => t.type === 'income' && t.status === 'paid' && t.date === dStr).reduce((acc, t) => acc + (t.amount || 0), 0);
-      const dayFuture = txs.filter(t => t.type === 'income' && t.status !== 'paid' && (t.dueDate === dStr || t.date === dStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
-      const dayExp = txs.filter(t => t.type === 'expense' && t.date === dStr).reduce((acc, t) => acc + (t.amount || 0), 0);
-      incomeData.push(dayPaid);
-      projectedData.push(dayPaid + dayFuture);
-      expenseData.push(dayExp);
-    }
-  } else {
-    // 30d, 90d ou mês: agrupa pelos últimos 5 meses
-    for (let i = 4; i >= 0; i--) {
-      const mIdx = (curMonth - i + 12) % 12;
-      labels.push(months[mIdx]);
-      const mPrefix = `2026-${String(mIdx + 1).padStart(2, '0')}`;
-      const mPaid = txs.filter(t => t.type === 'income' && t.status === 'paid' && (t.date || '').startsWith(mPrefix)).reduce((acc, t) => acc + (t.amount || 0), 0);
-      const mFuture = txs.filter(t => t.type === 'income' && t.status !== 'paid' && (t.dueDate || t.date || '').startsWith(mPrefix)).reduce((acc, t) => acc + (t.amount || 0), 0);
-      const mExp = txs.filter(t => t.type === 'expense' && (t.date || '').startsWith(mPrefix)).reduce((acc, t) => acc + (t.amount || 0), 0);
-      incomeData.push(mPaid);
-      projectedData.push(mPaid + mFuture);
-      expenseData.push(mExp);
-    }
+  if (!cashflow.hasData) {
+    container.innerHTML = `
+      <div class="h-full min-h-[200px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl">
+        <svg class="w-8 h-8 text-zinc-300 dark:text-zinc-600 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        <span class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Ainda não há dados suficientes para gerar este gráfico.</span>
+        <span class="text-[11px] text-zinc-400 mt-0.5">Registre receitas ou despesas reais para visualizar as projeções de caixa.</span>
+      </div>
+    `;
+    return;
   }
 
-  window._dashFinanceChart = new window.Chart(ctx, {
+  // Se o canvas foi substituído anteriormente por empty state, recria o canvas
+  if (!document.getElementById('chart-dashboard-finance')) {
+    container.innerHTML = '<canvas id="chart-dashboard-finance"></canvas>';
+  }
+  const realCtx = document.getElementById('chart-dashboard-finance');
+
+  window._dashFinanceChart = new window.Chart(realCtx, {
     type: 'bar',
     data: {
-      labels,
+      labels: cashflow.labels,
       datasets: [
         {
-          label: 'Recebido Realizado',
-          data: incomeData,
+          label: 'Recebido (Realizado)',
+          data: cashflow.realIncome,
           backgroundColor: '#0000FF',
           borderRadius: 6
         },
         {
-          label: 'Previsto / Projetado',
-          data: projectedData,
+          label: 'Previsto a Receber',
+          data: cashflow.projectedIncome,
           backgroundColor: '#93C5FD',
           borderRadius: 6
         },
         {
-          label: 'Despesas',
-          data: expenseData,
-          backgroundColor: '#E5E7EB',
+          label: 'Despesas Realizadas',
+          data: cashflow.realExpense,
+          backgroundColor: '#F43F5E',
+          borderRadius: 6
+        },
+        {
+          label: 'Despesas Previstas',
+          data: cashflow.projectedExpense,
+          backgroundColor: '#FECDD3',
           borderRadius: 6
         }
       ]
@@ -659,11 +647,19 @@ function renderCashflowChart(period = '30d') {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }
+        legend: { position: 'top', labels: { boxWidth: 10, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y)}`
+          }
+        }
       },
       scales: {
         x: { grid: { display: false } },
-        y: { grid: { color: 'rgba(0,0,0,0.05)' } }
+        y: {
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: { callback: (val) => formatCurrency(val) }
+        }
       }
     }
   });

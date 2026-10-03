@@ -96,6 +96,7 @@ class Store {
       proposals: [],
       projects: [],
       transactions: [],
+      recurringRules: [],
       tasks: [],
       habits: [],
       goals: [],
@@ -142,6 +143,7 @@ class Store {
         if (!parsed.projects) parsed.projects = [];
         if (!parsed.services) parsed.services = [];
         if (!parsed.transactions) parsed.transactions = [];
+        if (!parsed.recurringRules) parsed.recurringRules = [];
         if (!parsed.tasks) parsed.tasks = [];
         if (!parsed.events) parsed.events = [];
         if (!parsed.habits) parsed.habits = [];
@@ -566,6 +568,391 @@ class Store {
     return newTx;
   }
 
+  markTransactionAsPaid(id) {
+    const tx = this.state.transactions.find(t => t.id === id);
+    if (!tx) return null;
+    tx.status = 'paid';
+    tx.paidAt = new Date().toISOString().split('T')[0];
+
+    // Se for receita com cliente vinculado, atualiza LTV
+    if (tx.type === 'income' && tx.clientId) {
+      const client = this.state.clients.find(c => c.id === tx.clientId);
+      if (client) {
+        client.totalGenerated = (client.totalGenerated || 0) + (tx.amount || 0);
+        if (client.projectsCount > 0) {
+          client.averageTicket = Math.round(client.totalGenerated / client.projectsCount);
+        }
+      }
+    }
+
+    // Atualiza metas vinculadas
+    if (tx.type === 'income') {
+      const relatedGoals = (this.state.goals || []).filter(g =>
+        g.scope === tx.scope &&
+        (g.linkedCategory === tx.category || !g.linkedCategory || g.category === 'Receita')
+      );
+      relatedGoals.forEach(g => {
+        g.currentValue = (g.currentValue || 0) + (tx.amount || 0);
+      });
+    }
+
+    this.addXP(30, `Recebimento de ${tx.title} baixado no caixa`);
+    this.saveState();
+    return tx;
+  }
+
+  addTransactionWithInstallments(txData, count) {
+    const totalAmount = parseFloat(txData.amount) || 0;
+    const countInt = Math.max(1, parseInt(count) || 1);
+    const installmentValue = parseFloat((totalAmount / countInt).toFixed(2));
+    const baseDate = txData.date || new Date().toISOString().split('T')[0];
+    const initialStatus = txData.status || 'paid';
+    const createdTxs = [];
+
+    for (let i = 0; i < countInt; i++) {
+      const [y, m, d] = baseDate.split('-').map(Number);
+      const instDate = new Date(y, m - 1 + i, d, 12, 0, 0);
+      const instDateStr = `${instDate.getFullYear()}-${String(instDate.getMonth() + 1).padStart(2, '0')}-${String(instDate.getDate()).padStart(2, '0')}`;
+
+      const tx = {
+        id: `tx-${Date.now()}-${i}`,
+        title: `${txData.title} (${i + 1}/${countInt})`,
+        type: txData.type,
+        scope: txData.scope || 'business',
+        amount: i === countInt - 1 ? parseFloat((totalAmount - (installmentValue * (countInt - 1))).toFixed(2)) : installmentValue,
+        date: instDateStr,
+        dueDate: instDateStr,
+        status: i === 0 ? initialStatus : 'pending',
+        category: txData.category,
+        paymentMethod: txData.paymentMethod || 'Pix',
+        clientId: txData.clientId || null,
+        clientName: txData.clientName || null,
+        projectId: txData.projectId || null,
+        notes: txData.notes || '',
+        installmentNumber: i + 1,
+        totalInstallments: countInt
+      };
+
+      if (tx.status === 'paid' && tx.type === 'income' && tx.clientId) {
+        const client = this.state.clients.find(c => c.id === tx.clientId);
+        if (client) {
+          client.totalGenerated = (client.totalGenerated || 0) + tx.amount;
+        }
+      }
+
+      this.state.transactions.unshift(tx);
+      createdTxs.push(tx);
+    }
+
+    this.saveState();
+    return createdTxs;
+  }
+
+  // --- RECORRÊNCIAS FINANCEIRAS REAIS (V2.2) ---
+  addRecurringRule(ruleData) {
+    if (!this.state.recurringRules) this.state.recurringRules = [];
+
+    const ruleId = 'rec-' + Date.now();
+    const startDate = ruleData.startDate || new Date().toISOString().split('T')[0];
+    const durationMode = ruleData.durationMode || (ruleData.occurrencesCount ? 'occurrences' : (ruleData.endDate ? 'until_date' : 'infinite'));
+    const occurrencesCount = ruleData.occurrencesCount ? parseInt(ruleData.occurrencesCount) : (durationMode === 'infinite' ? 12 : null);
+
+    const rule = {
+      id: ruleId,
+      userId: this.currentUserId || 'guest',
+      title: ruleData.title,
+      type: ruleData.type || 'income',
+      amount: parseFloat(ruleData.amount) || 0,
+      frequency: ruleData.frequency || 'monthly', // weekly, monthly, bimonthly, quarterly, semiannual, annual, custom
+      startDate,
+      endDate: ruleData.endDate || null,
+      occurrencesCount,
+      durationMode,
+      category: ruleData.category || (ruleData.type === 'income' ? 'Recorrência / Retainer' : 'Software & SaaS'),
+      scope: ruleData.scope || 'business',
+      clientId: ruleData.clientId || null,
+      clientName: ruleData.clientName || null,
+      projectId: ruleData.projectId || null,
+      paymentMethod: ruleData.paymentMethod || 'Pix',
+      notes: ruleData.notes || '',
+      status: 'active',
+      createdAt: new Date().toISOString()
+    };
+
+    // Gera ocorrências com base na regra
+    const occurrences = [];
+    let countToGenerate = 12;
+
+    if (durationMode === 'occurrences' && occurrencesCount) {
+      countToGenerate = Math.min(60, occurrencesCount);
+    } else if (durationMode === 'until_date' && rule.endDate) {
+      // Calcula ocorrências até a data final
+      countToGenerate = 1;
+      let checkDate = startDate;
+      while (countToGenerate < 60) {
+        checkDate = this.calculateNextRecurringDate(startDate, rule.frequency, countToGenerate);
+        if (checkDate > rule.endDate) break;
+        countToGenerate++;
+      }
+    }
+
+    const initialStatus = ruleData.initialStatus || (ruleData.type === 'income' ? 'pending' : 'paid');
+
+    for (let i = 0; i < countToGenerate; i++) {
+      const occDate = this.calculateNextRecurringDate(startDate, rule.frequency, i);
+      if (rule.endDate && occDate > rule.endDate) break;
+
+      const occTx = {
+        id: `tx-rec-${Date.now()}-${i}`,
+        recurringId: ruleId,
+        occurrenceIndex: i + 1,
+        totalOccurrences: rule.occurrencesCount || null,
+        isRecurring: true,
+        title: `${rule.title} (${i + 1}${rule.occurrencesCount ? '/' + rule.occurrencesCount : ''})`,
+        type: rule.type,
+        amount: rule.amount,
+        scope: rule.scope,
+        category: rule.category,
+        clientId: rule.clientId,
+        clientName: rule.clientName,
+        projectId: rule.projectId,
+        paymentMethod: rule.paymentMethod,
+        date: occDate,
+        dueDate: occDate,
+        status: i === 0 ? initialStatus : 'pending',
+        notes: rule.notes
+      };
+
+      if (occTx.status === 'paid' && occTx.type === 'income' && occTx.clientId) {
+        const client = this.state.clients.find(c => c.id === occTx.clientId);
+        if (client) {
+          client.totalGenerated = (client.totalGenerated || 0) + occTx.amount;
+        }
+      }
+
+      this.state.transactions.unshift(occTx);
+      occurrences.push(occTx);
+    }
+
+    this.state.recurringRules.unshift(rule);
+    this.saveState();
+    return { rule, occurrences };
+  }
+
+  calculateNextRecurringDate(baseDateStr, frequency, index) {
+    if (index === 0) return baseDateStr;
+    const [y, m, d] = baseDateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d, 12, 0, 0);
+
+    if (frequency === 'weekly' || frequency === 'semanal') {
+      date.setDate(date.getDate() + (index * 7));
+    } else if (frequency === 'bimonthly' || frequency === 'bimestral') {
+      date.setMonth(date.getMonth() + (index * 2));
+    } else if (frequency === 'quarterly' || frequency === 'trimestral') {
+      date.setMonth(date.getMonth() + (index * 3));
+    } else if (frequency === 'semiannual' || frequency === 'semestral') {
+      date.setMonth(date.getMonth() + (index * 6));
+    } else if (frequency === 'annual' || frequency === 'anual') {
+      date.setFullYear(date.getFullYear() + index);
+    } else {
+      // Mensal ou padrão
+      date.setMonth(date.getMonth() + index);
+    }
+
+    const resY = date.getFullYear();
+    const resM = String(date.getMonth() + 1).padStart(2, '0');
+    const resD = String(date.getDate()).padStart(2, '0');
+    return `${resY}-${resM}-${resD}`;
+  }
+
+  updateRecurringTransaction(txId, updates, editScope = 'single') {
+    const tx = this.state.transactions.find(t => t.id === txId);
+    if (!tx) return;
+
+    if (editScope === 'single' || !tx.recurringId) {
+      const idx = this.state.transactions.findIndex(t => t.id === txId);
+      if (idx !== -1) {
+        this.state.transactions[idx] = { ...this.state.transactions[idx], ...updates };
+      }
+    } else if (editScope === 'future') {
+      // Altera este lançamento e os próximos não pagos da recorrência
+      this.state.transactions.forEach(t => {
+        if (t.recurringId === tx.recurringId && t.date >= tx.date && t.status !== 'paid') {
+          if (updates.amount !== undefined) t.amount = parseFloat(updates.amount) || 0;
+          if (updates.category) t.category = updates.category;
+          if (updates.paymentMethod) t.paymentMethod = updates.paymentMethod;
+          if (updates.title) {
+            const occPart = t.title.match(/\(\d+.*?\)/) ? ' ' + t.title.match(/\(\d+.*?\)/)[0] : '';
+            t.title = updates.title.replace(/\s*\(\d+.*?\)/, '') + occPart;
+          }
+        }
+      });
+      // Atualiza regra
+      const rule = (this.state.recurringRules || []).find(r => r.id === tx.recurringId);
+      if (rule) {
+        if (updates.amount !== undefined) rule.amount = parseFloat(updates.amount) || 0;
+        if (updates.category) rule.category = updates.category;
+      }
+    } else if (editScope === 'all') {
+      // Altera toda a recorrência (mantendo parcelas já pagas sem alteração de valor)
+      this.state.transactions.forEach(t => {
+        if (t.recurringId === tx.recurringId) {
+          if (t.status !== 'paid' && updates.amount !== undefined) {
+            t.amount = parseFloat(updates.amount) || 0;
+          }
+          if (updates.category) t.category = updates.category;
+          if (updates.paymentMethod) t.paymentMethod = updates.paymentMethod;
+          if (updates.title) {
+            const occPart = t.title.match(/\(\d+.*?\)/) ? ' ' + t.title.match(/\(\d+.*?\)/)[0] : '';
+            t.title = updates.title.replace(/\s*\(\d+.*?\)/, '') + occPart;
+          }
+        }
+      });
+      const rule = (this.state.recurringRules || []).find(r => r.id === tx.recurringId);
+      if (rule) {
+        if (updates.amount !== undefined) rule.amount = parseFloat(updates.amount) || 0;
+        if (updates.category) rule.category = updates.category;
+        if (updates.title) rule.title = updates.title;
+      }
+    }
+
+    this.saveState();
+  }
+
+  cancelRecurringRule(ruleId) {
+    const rule = (this.state.recurringRules || []).find(r => r.id === ruleId);
+    if (rule) {
+      rule.status = 'cancelled';
+      rule.cancelledAt = new Date().toISOString();
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    // Cancela apenas ocorrências futuras pendentes, mantendo histórico pago intacto
+    this.state.transactions.forEach(t => {
+      if (t.recurringId === ruleId && t.status === 'pending' && (t.date >= todayStr || t.dueDate >= todayStr)) {
+        t.status = 'cancelled';
+      }
+    });
+
+    this.saveState();
+  }
+
+  // --- CÁLCULO DE FLUXO DE CAIXA 100% REAL (V2.2) ---
+  getFinancialCashflow(scope = 'business', period = '30d') {
+    const txs = (this.state.transactions || []).filter(t => t.scope === scope && t.status !== 'cancelled');
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    let labels = [];
+    let realIncome = [];
+    let realExpense = [];
+    let projectedIncome = [];
+    let projectedExpense = [];
+    let hasData = txs.length > 0;
+
+    if (period === '7d') {
+      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dStr = d.toISOString().split('T')[0];
+        labels.push(days[d.getDay()]);
+
+        const paidInc = txs.filter(t => t.type === 'income' && t.status === 'paid' && t.date === dStr).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const paidExp = txs.filter(t => t.type === 'expense' && t.status === 'paid' && t.date === dStr).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const projInc = txs.filter(t => t.type === 'income' && t.status === 'pending' && (t.dueDate === dStr || t.date === dStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const projExp = txs.filter(t => t.type === 'expense' && t.status === 'pending' && (t.dueDate === dStr || t.date === dStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+
+        realIncome.push(paidInc);
+        realExpense.push(paidExp);
+        projectedIncome.push(projInc);
+        projectedExpense.push(projExp);
+      }
+    } else if (period === '30d') {
+      // Agrupa em 4 semanas dos últimos 30 dias
+      for (let w = 3; w >= 0; w--) {
+        const startDay = new Date();
+        startDay.setDate(startDay.getDate() - (w * 7 + 6));
+        const endDay = new Date();
+        endDay.setDate(endDay.getDate() - (w * 7));
+        const startStr = startDay.toISOString().split('T')[0];
+        const endStr = endDay.toISOString().split('T')[0];
+        labels.push(`Sem ${4 - w}`);
+
+        const paidInc = txs.filter(t => t.type === 'income' && t.status === 'paid' && t.date >= startStr && t.date <= endStr).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const paidExp = txs.filter(t => t.type === 'expense' && t.status === 'paid' && t.date >= startStr && t.date <= endStr).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const projInc = txs.filter(t => t.type === 'income' && t.status === 'pending' && (t.dueDate || t.date) >= startStr && (t.dueDate || t.date) <= endStr).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const projExp = txs.filter(t => t.type === 'expense' && t.status === 'pending' && (t.dueDate || t.date) >= startStr && (t.dueDate || t.date) <= endStr).reduce((acc, t) => acc + (t.amount || 0), 0);
+
+        realIncome.push(paidInc);
+        realExpense.push(paidExp);
+        projectedIncome.push(projInc);
+        projectedExpense.push(projExp);
+      }
+    } else if (period === 'current_vs_previous') {
+      // Mês atual vs Mês anterior
+      const curYear = now.getFullYear();
+      const curM = now.getMonth();
+      const prevDate = new Date(curYear, curM - 1, 1);
+      const prevYear = prevDate.getFullYear();
+      const prevM = prevDate.getMonth();
+
+      labels = [`${months[prevM]}/${prevYear}`, `${months[curM]}/${curYear}`];
+
+      [ { y: prevYear, m: prevM }, { y: curYear, m: curM } ].forEach(item => {
+        const mStr = `${item.y}-${String(item.m + 1).padStart(2, '0')}`;
+        const paidInc = txs.filter(t => t.type === 'income' && t.status === 'paid' && (t.date || '').startsWith(mStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const paidExp = txs.filter(t => t.type === 'expense' && t.status === 'paid' && (t.date || '').startsWith(mStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const projInc = txs.filter(t => t.type === 'income' && t.status === 'pending' && ((t.dueDate || t.date) || '').startsWith(mStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const projExp = txs.filter(t => t.type === 'expense' && t.status === 'pending' && ((t.dueDate || t.date) || '').startsWith(mStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+
+        realIncome.push(paidInc);
+        realExpense.push(paidExp);
+        projectedIncome.push(projInc);
+        projectedExpense.push(projExp);
+      });
+    } else {
+      // 90d (3 meses), 6m ou 12m
+      const monthsCount = period === '90d' ? 3 : (period === '12m' ? 12 : 6);
+      for (let i = monthsCount - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        labels.push(months[d.getMonth()]);
+
+        const paidInc = txs.filter(t => t.type === 'income' && t.status === 'paid' && (t.date || '').startsWith(mStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const paidExp = txs.filter(t => t.type === 'expense' && t.status === 'paid' && (t.date || '').startsWith(mStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const projInc = txs.filter(t => t.type === 'income' && t.status === 'pending' && ((t.dueDate || t.date) || '').startsWith(mStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+        const projExp = txs.filter(t => t.type === 'expense' && t.status === 'pending' && ((t.dueDate || t.date) || '').startsWith(mStr)).reduce((acc, t) => acc + (t.amount || 0), 0);
+
+        realIncome.push(paidInc);
+        realExpense.push(paidExp);
+        projectedIncome.push(projInc);
+        projectedExpense.push(projExp);
+      }
+    }
+
+    const totalRealIncome = realIncome.reduce((a, b) => a + b, 0);
+    const totalRealExpense = realExpense.reduce((a, b) => a + b, 0);
+    const totalProjIncome = projectedIncome.reduce((a, b) => a + b, 0);
+    const totalProjExpense = projectedExpense.reduce((a, b) => a + b, 0);
+
+    return {
+      labels,
+      realIncome,
+      realExpense,
+      projectedIncome,
+      projectedExpense,
+      totalRealIncome,
+      totalRealExpense,
+      netRealBalance: totalRealIncome - totalRealExpense,
+      totalProjIncome,
+      totalProjExpense,
+      netProjectedBalance: (totalRealIncome + totalProjIncome) - (totalRealExpense + totalProjExpense),
+      hasData: (totalRealIncome + totalRealExpense + totalProjIncome + totalProjExpense) > 0
+    };
+  }
+
   updateTransaction(id, updates) {
     const idx = this.state.transactions.findIndex(t => t.id === id);
     if (idx !== -1) {
@@ -948,26 +1335,31 @@ class Store {
     if (!delivery.files) delivery.files = [];
 
     const newFile = {
-      id: 'f-' + Date.now(),
+      id: file.id || ('f-' + Date.now()),
+      storageId: file.storageId || null,
       name: file.name,
       size: file.size || '1.5 MB',
       type: file.type || 'arquivo',
       date: new Date().toISOString().split('T')[0],
-      uploader: this.state.profile.name,
+      uploader: this.state.profile?.name || 'Usuário',
       url: file.url || '#'
     };
     delivery.files.push(newFile);
 
     // Conexão automática com a Central de Documentos
     this.addDocument({
+      id: newFile.storageId || newFile.id,
+      storageId: newFile.storageId || null,
       name: newFile.name,
-      category: 'Arquivos finais',
+      category: 'Entregas',
       format: newFile.type,
       size: newFile.size,
       clientId: delivery.clientId || null,
       clientName: delivery.clientName || null,
       projectId: delivery.projectId || null,
-      projectName: delivery.projectName || null
+      projectName: delivery.projectName || null,
+      deliveryId: delivery.id,
+      deliveryTitle: delivery.title
     });
 
     if (!delivery.history) delivery.history = [];
@@ -979,6 +1371,14 @@ class Store {
 
     this.saveState();
     return newFile;
+  }
+
+  deleteDeliveryFile(deliveryId, fileId) {
+    if (!this.state.deliveries) return;
+    const delivery = this.state.deliveries.find(d => d.id === deliveryId);
+    if (!delivery || !delivery.files) return;
+    delivery.files = delivery.files.filter(f => f.id !== fileId && f.storageId !== fileId);
+    this.saveState();
   }
 
   addDeliveryComment(deliveryId, text) {

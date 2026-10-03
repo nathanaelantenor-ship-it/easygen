@@ -2,7 +2,7 @@ import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
-import { exportToCSV } from '../utils/exportUtils.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let filterType = 'all';
 
@@ -28,9 +28,7 @@ export function renderClientsView(container, onNavigate) {
           <p class="text-xs text-zinc-500">Inteligência 360°, histórico integrado e saúde da carteira de clientes.</p>
         </div>
         <div class="flex items-center gap-2">
-          <button id="clients-export-btn" class="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors">
-            Exportar
-          </button>
+          ${renderExportButtonHtml('clients-export-dropdown', 'Exportar')}
           <button id="clients-new-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-medium transition-colors shadow-xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             <span>Novo Cliente</span>
@@ -201,13 +199,34 @@ export function renderClientsView(container, onNavigate) {
     };
   });
 
-  // Export
-  container.querySelector('#clients-export-btn').onclick = () => {
-    const headers = ['Nome', 'Empresa', 'Documento', 'Telefone', 'Email', 'Tipo', 'LTV', 'Projetos', 'Entrada'];
-    const rows = clients.map(c => [c.name, c.company, c.document, c.phone, c.email, c.clientType, c.totalGenerated, c.projectsCount, c.entryDate]);
-    exportToCSV('clientes_app_teste', rows, headers);
-    toast.success('Lista de clientes exportada!');
-  };
+  // Exportação Universal (PDF, CSV, Excel)
+  bindExportButton(container, 'clients-export-dropdown', () => {
+    const headers = ['Nome', 'Empresa', 'Documento', 'Telefone', 'Email', 'Tipo', 'LTV (R$)', 'Projetos', 'Data Entrada'];
+    const rows = filteredClients.map(c => [
+      c.name,
+      c.company || '-',
+      c.document || '-',
+      c.phone || '-',
+      c.email || '-',
+      c.clientType,
+      (c.totalGenerated || 0).toFixed(2).replace('.', ','),
+      c.projectsCount || 0,
+      formatDate(c.entryDate)
+    ]);
+    const summary = [
+      { label: 'Total de Clientes', value: filteredClients.length },
+      { label: 'LTV Consolidado', value: formatCurrency(totalLTV) },
+      { label: 'Contratos Mensais', value: monthlyClients }
+    ];
+    return {
+      filename: `clientes_${new Date().toISOString().split('T')[0]}`,
+      title: 'Carteira de Clientes & Relacionamento',
+      headers,
+      rows,
+      summary,
+      filters: filterType !== 'all' ? `Tipo: ${filterType}` : 'Todos os clientes'
+    };
+  });
 
   // New Client
   container.querySelector('#clients-new-btn').onclick = () => {
@@ -1158,72 +1177,184 @@ function openCreateProposalForClientModal(client, onSuccess) {
 
 function openCreateTransactionForClientModal(client, onSuccess) {
   const content = `
-    <form id="client-create-tx-form" class="space-y-3">
+    <form id="client-create-tx-form" class="space-y-3.5">
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Tipo de Lançamento *</label>
+          <select name="type" id="client-tx-type" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-semibold">
+            <option value="income" selected>Receita (Entrada)</option>
+            <option value="expense">Despesa (Saída vinculada)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Valor (R$) *</label>
+          <input required type="number" step="0.01" name="amount" placeholder="1500.00" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100">
+        </div>
+      </div>
+
       <div>
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Descrição do Lançamento *</label>
-        <input required name="title" placeholder="Ex: Parcela 1/2 - Identidade Visual" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Título / Descrição *</label>
+        <input required name="title" placeholder="Ex: Contrato de Retainer Mensal..." class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
       </div>
+
       <div class="grid grid-cols-2 gap-2">
         <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Valor (R$)</label>
-          <input required type="number" step="0.01" name="amount" placeholder="2500" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Data / Início *</label>
+          <input required type="date" name="startDate" value="${new Date().toISOString().split('T')[0]}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
         </div>
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Data de Vencimento</label>
-          <input required type="date" name="dueDate" value="${new Date().toISOString().split('T')[0]}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-2">
         <div>
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Forma de Pagamento</label>
-          <select name="paymentMethod" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          <select name="paymentMethod" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
             <option value="PIX" selected>PIX</option>
             <option value="Boleto">Boleto Bancário</option>
             <option value="Cartão">Cartão de Crédito</option>
             <option value="Transferência">TED / Transferência</option>
           </select>
         </div>
+      </div>
+
+      <!-- SEÇÃO DE RECORRÊNCIA REAL -->
+      <div class="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-2.5">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="client-chk-recurring" class="rounded border-zinc-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-600">
+          <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">Lançamento recorrente</span>
+        </label>
+
+        <div id="client-recurring-fields" class="hidden space-y-2.5 pt-1">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] font-semibold text-zinc-500 uppercase">Frequência</label>
+              <select name="frequency" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+                <option value="mensal" selected>Mensal</option>
+                <option value="semanal">Semanal</option>
+                <option value="bimestral">Bimestral</option>
+                <option value="trimestral">Trimestral</option>
+                <option value="semestral">Semestral</option>
+                <option value="anual">Anual</option>
+                <option value="personalizada">Personalizada</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-zinc-500 uppercase">Duração</label>
+              <select id="client-duration-mode" name="durationMode" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+                <option value="occurrences" selected>Número de ocorrências</option>
+                <option value="until_date">Até uma data de término</option>
+                <option value="infinite">Sem término (Contínuo)</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="client-occ-count-group">
+            <label class="block text-[11px] font-semibold text-zinc-500 uppercase">Número de Ocorrências (Meses/Parcelas)</label>
+            <input type="number" min="1" max="60" name="occurrencesCount" value="6" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Ex: 6 para 6 meses">
+          </div>
+
+          <div id="client-end-date-group" class="hidden">
+            <label class="block text-[11px] font-semibold text-zinc-500 uppercase">Data de Término</label>
+            <input type="date" name="endDate" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
         <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Status</label>
-          <select name="status" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-            <option value="pending" selected>Pendente (A Receber)</option>
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Status Inicial</label>
+          <select name="status" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
+            <option value="pending" selected>Pendente (A Receber / A Pagar)</option>
             <option value="paid">Já Pago (Baixado)</option>
           </select>
         </div>
+        <div>
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Categoria</label>
+          <input name="category" value="Serviços & Projetos" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
+        </div>
       </div>
+
       <div class="pt-2 flex justify-end gap-2">
-        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors">Lançar Receita</button>
+        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors">Salvar Lançamento</button>
       </div>
     </form>
   `;
 
   const m = modal.open({
-    title: `Lançar Receita — ${client.name}`,
+    title: `Lançamento Financeiro — ${client.name}`,
     content,
     size: 'md'
   });
 
-  m.panel.querySelector('#client-create-tx-form').onsubmit = (e) => {
+  const form = m.panel.querySelector('#client-create-tx-form');
+  const chkRec = form.querySelector('#client-chk-recurring');
+  const recFields = form.querySelector('#client-recurring-fields');
+  const durationMode = form.querySelector('#client-duration-mode');
+  const occGroup = form.querySelector('#client-occ-count-group');
+  const endGroup = form.querySelector('#client-end-date-group');
+
+  chkRec.onchange = () => {
+    recFields.classList.toggle('hidden', !chkRec.checked);
+  };
+
+  durationMode.onchange = () => {
+    if (durationMode.value === 'occurrences') {
+      occGroup.classList.remove('hidden');
+      endGroup.classList.add('hidden');
+    } else if (durationMode.value === 'until_date') {
+      occGroup.classList.add('hidden');
+      endGroup.classList.remove('hidden');
+    } else {
+      occGroup.classList.add('hidden');
+      endGroup.classList.add('hidden');
+    }
+  };
+
+  form.onsubmit = (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
-    const tx = store.addTransaction({
-      title: fd.get('title'),
-      type: 'income',
-      amount: parseFloat(fd.get('amount')) || 0,
-      dueDate: fd.get('dueDate'),
-      date: fd.get('dueDate'),
-      paymentMethod: fd.get('paymentMethod'),
-      status: fd.get('status'),
-      category: 'Projetos',
-      scope: 'business',
-      clientId: client.id,
-      clientName: client.name
-    });
-    store.addClientActivity(client.id, {
-      type: 'finance',
-      title: `Receita lançada: ${tx.title} (${formatCurrency(tx.amount)})`
-    });
-    toast.success('Receita registrada com sucesso!');
+    const fd = new FormData(form);
+    const type = fd.get('type');
+    const isRecurring = chkRec.checked;
+
+    if (isRecurring) {
+      const res = store.addRecurringRule({
+        title: fd.get('title'),
+        type,
+        scope: 'business',
+        amount: parseFloat(fd.get('amount')) || 0,
+        startDate: fd.get('startDate'),
+        endDate: fd.get('endDate') || null,
+        durationMode: fd.get('durationMode'),
+        occurrencesCount: fd.get('occurrencesCount'),
+        frequency: fd.get('frequency'),
+        category: fd.get('category'),
+        paymentMethod: fd.get('paymentMethod'),
+        initialStatus: fd.get('status'),
+        clientId: client.id,
+        clientName: client.name
+      });
+      store.addClientActivity(client.id, {
+        type: 'finance',
+        title: `Contrato recorrente criado: ${fd.get('title')} (${res.occurrences.length} ocorrências)`
+      });
+      toast.success(`Recorrência criada com ${res.occurrences.length} ocorrências geradas!`);
+    } else {
+      const tx = store.addTransaction({
+        title: fd.get('title'),
+        type,
+        amount: parseFloat(fd.get('amount')) || 0,
+        dueDate: fd.get('startDate'),
+        date: fd.get('startDate'),
+        paymentMethod: fd.get('paymentMethod'),
+        status: fd.get('status'),
+        category: fd.get('category'),
+        scope: 'business',
+        clientId: client.id,
+        clientName: client.name
+      });
+      store.addClientActivity(client.id, {
+        type: 'finance',
+        title: `Lançamento registrado: ${tx.title} (${formatCurrency(tx.amount)})`
+      });
+      toast.success('Lançamento financeiro registrado com sucesso!');
+    }
+
     m.close();
     if (onSuccess) onSuccess();
   };

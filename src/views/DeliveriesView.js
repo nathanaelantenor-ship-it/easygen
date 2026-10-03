@@ -5,6 +5,10 @@
 
 import { store } from '../state/store.js';
 import { toast } from '../components/Toast.js';
+import { modal } from '../components/Modal.js';
+import { formatDate } from '../utils/formatters.js';
+import { storageService } from '../services/storageService.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 // Estado local de filtros e visualização
 const deliveryFilters = {
@@ -108,6 +112,8 @@ export function renderDeliveriesView(container, onNavigate) {
               <span>Lista</span>
             </button>
           </div>
+
+          ${renderExportButtonHtml('deliveries-export-dropdown', 'Exportar')}
 
           <button id="btn-manage-tags" class="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
@@ -573,6 +579,33 @@ function renderDeliveriesList(deliveries) {
 // EVENT HANDLERS & BINDINGS
 // ----------------------------------------------------
 function setupDeliveriesEvents(container, onNavigate) {
+  // Exportação Universal
+  bindExportButton(container, 'deliveries-export-dropdown', () => {
+    const deliveries = store.getState().deliveries || [];
+    const headers = ['Título', 'Cliente', 'Projeto', 'Status', 'Prioridade', 'Prazo', 'Responsável'];
+    const rows = deliveries.map(d => [
+      d.title,
+      d.clientName || '-',
+      d.projectName || '-',
+      (d.status || '').toUpperCase(),
+      (d.priority || 'media').toUpperCase(),
+      d.dueDate ? d.dueDate.split('-').reverse().join('/') : '-',
+      d.assignee || '-'
+    ]);
+    const summary = [
+      { label: 'Total de Demandas', value: deliveries.length },
+      { label: 'Entregues/Aprovadas', value: deliveries.filter(d => d.status === 'entregue' || d.status === 'aprovado').length }
+    ];
+    return {
+      filename: `entregas_${new Date().toISOString().split('T')[0]}`,
+      title: 'Quadro Operacional de Entregas & Demandas',
+      headers,
+      rows,
+      summary,
+      filters: `Visualização: ${deliveryFilters.viewMode}`
+    };
+  });
+
   // Toggle View: Kanban / Lista
   const btnKanban = container.querySelector('#btn-view-kanban');
   const btnList = container.querySelector('#btn-view-list');
@@ -664,6 +697,41 @@ function setupDeliveriesEvents(container, onNavigate) {
   if (btnAddCol) {
     btnAddCol.onclick = () => openAddColumnModal(() => renderDeliveriesView(container, onNavigate));
   }
+
+  // Universal Export Dropdown
+  bindExportButton(container, 'deliveries-export-dropdown', () => {
+    const allDeliveries = store.getState().deliveries || [];
+    const headers = ['Título', 'Cliente', 'Projeto', 'Status', 'Prioridade', 'Prazo', 'Responsável', 'Tarefas', 'Arquivos'];
+    const rows = allDeliveries.map(d => [
+      d.title || '',
+      d.clientName || '-',
+      d.projectName || '-',
+      d.status || '',
+      (d.priority || '').toUpperCase(),
+      formatDate(d.dueDate),
+      d.assignee || '-',
+      `${(d.checklist || []).filter(c => c.completed).length}/${(d.checklist || []).length}`,
+      (d.files || []).length
+    ]);
+
+    const metrics = store.getDeliveryMetrics();
+    const summary = [
+      { label: 'Total de Demandas', value: metrics.total },
+      { label: 'Em Andamento', value: metrics.inProgress },
+      { label: 'Em Revisão', value: metrics.inReview },
+      { label: 'Entregues', value: metrics.delivered },
+      { label: 'Atrasadas', value: metrics.overdue }
+    ];
+
+    return {
+      filename: `entregas_operacoes_${new Date().toISOString().split('T')[0]}`,
+      title: 'Relatório Operacional de Entregas & Demandas',
+      headers,
+      rows,
+      summary,
+      filters: `Total: ${allDeliveries.length} demandas cadastradas`
+    };
+  });
 
   // Drag and Drop
   if (deliveryFilters.viewMode === 'kanban') {
@@ -808,13 +876,22 @@ export function openDeliveryDetailModal(deliveryId, onUpdate) {
 
   modalEl.innerHTML = `
     <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden my-6 flex flex-col max-h-[92vh] animate-scaleUp">
+      <!-- INPUTS DE UPLOAD REAL OCULTOS -->
+      <input type="file" id="input-delivery-cover-file" accept="image/png,image/jpeg,image/jpg,image/webp" capture="environment" class="hidden" />
+      <input type="file" id="input-delivery-file-upload" accept=".jpg,.jpeg,.png,.webp,.pdf,.xls,.xlsx,.csv,.doc,.docx" class="hidden" />
+
       <!-- HEADER / BANNER -->
       ${delivery.coverImage ? `
-        <div class="w-full h-44 relative bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-800">
+        <div class="w-full h-44 relative bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-800 group">
           <img src="${delivery.coverImage}" alt="Capa" class="w-full h-full object-cover">
-          <button id="btn-remove-cover" class="absolute top-3 right-12 px-2.5 py-1 bg-black/60 hover:bg-black/80 text-white text-[11px] rounded-lg transition-colors backdrop-blur-xs flex items-center gap-1">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg> Remover Capa
-          </button>
+          <div class="absolute top-3 right-12 flex items-center gap-2">
+            <button id="btn-change-cover-file" class="px-2.5 py-1 bg-black/70 hover:bg-black/90 text-white text-[11px] font-medium rounded-lg transition-colors backdrop-blur-xs flex items-center gap-1 shadow-sm cursor-pointer">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg> Alterar Capa
+            </button>
+            <button id="btn-remove-cover" class="px-2.5 py-1 bg-black/70 hover:bg-black/90 text-white text-[11px] font-medium rounded-lg transition-colors backdrop-blur-xs flex items-center gap-1 shadow-sm cursor-pointer">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg> Remover Capa
+            </button>
+          </div>
         </div>
       ` : ''}
 
@@ -837,7 +914,7 @@ export function openDeliveryDetailModal(deliveryId, onUpdate) {
             </select>
 
             ${!delivery.coverImage ? `
-              <button id="btn-add-cover-prompt" class="text-xs text-zinc-500 hover:text-blue-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+              <button id="btn-add-cover-file" class="text-xs text-zinc-600 dark:text-zinc-400 hover:text-blue-600 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg> Adicionar Capa
               </button>
             ` : ''}
@@ -932,29 +1009,34 @@ export function openDeliveryDetailModal(deliveryId, onUpdate) {
 
           <!-- ARQUIVOS E ANEXOS COM SYNC DOCUMENTOS -->
           <div class="border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4">
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h4 class="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg> Arquivos & Anexos (${(delivery.files || []).length})
               </h4>
-              <button id="btn-show-add-file-form" class="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-medium">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg> Anexar Arquivo
-              </button>
+              <div class="flex items-center gap-2">
+                <button id="btn-upload-delivery-file" class="px-2.5 py-1 text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg> + Fazer Upload Real
+                </button>
+                <button id="btn-show-add-file-form" class="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:underline flex items-center gap-1 cursor-pointer">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg> Link Externo
+                </button>
+              </div>
             </div>
 
-            <!-- Formulário para Anexar Arquivo (Oculto inicialmente) -->
+            <!-- Formulário para Link Externo (Oculto inicialmente) -->
             <div id="add-file-form-container" class="hidden mb-4 p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-2.5">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input type="text" id="input-file-name" placeholder="Nome do arquivo (ex: Logo_V2.pdf)" class="text-xs px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-600" />
+                <input type="text" id="input-file-name" placeholder="Nome do arquivo (ex: Figma Mockup)" class="text-xs px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-600" />
                 <input type="text" id="input-file-url" placeholder="Link / URL do arquivo (Drive, Figma, CDN)" class="text-xs px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-600" />
               </div>
               <div class="flex items-center justify-between">
                 <label class="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400 cursor-pointer">
                   <input type="checkbox" id="chk-sync-to-docs" checked class="rounded border-zinc-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-600" />
-                  <span>Sincronizar automaticamente na Central de Documentos</span>
+                  <span>Sincronizar na Central de Documentos</span>
                 </label>
                 <div class="flex gap-2">
-                  <button id="btn-cancel-add-file" class="px-2.5 py-1 text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">Cancelar</button>
-                  <button id="btn-confirm-add-file" class="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Salvar Arquivo</button>
+                  <button id="btn-cancel-add-file" class="px-2.5 py-1 text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 cursor-pointer">Cancelar</button>
+                  <button id="btn-confirm-add-file" class="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium cursor-pointer">Salvar Link</button>
                 </div>
               </div>
             </div>
@@ -962,22 +1044,39 @@ export function openDeliveryDetailModal(deliveryId, onUpdate) {
             <!-- Lista de Arquivos -->
             <div class="space-y-2">
               ${(delivery.files || []).length === 0 ? `
-                <p class="text-xs text-zinc-400 py-2 italic">Nenhum arquivo anexado a esta entrega.</p>
+                <p class="text-xs text-zinc-400 py-3 text-center italic border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl">Nenhum arquivo anexado a esta entrega. Faça o upload acima.</p>
               ` : (delivery.files || []).map(f => `
                 <div class="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 hover:border-blue-500/40 transition-colors">
-                  <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-xs">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-xs shrink-0 uppercase">
+                      ${f.storageId ? (f.type || 'ARQ').slice(0, 3) : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>'}
                     </div>
-                    <div>
-                      <div class="text-xs font-semibold text-zinc-900 dark:text-zinc-100">${f.name}</div>
-                      <div class="text-[10px] text-zinc-400">Adicionado em ${f.uploadedAt || 'hoje'}</div>
+                    <div class="min-w-0">
+                      <div class="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">${f.name}</div>
+                      <div class="text-[10px] text-zinc-400 flex items-center gap-1.5">
+                        <span>${f.size || '1 MB'}</span>
+                        <span>•</span>
+                        <span>${f.date || f.uploadedAt || 'hoje'}</span>
+                        ${f.storageId ? '<span class="px-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[9px] rounded font-medium">Local DB</span>' : ''}
+                      </div>
                     </div>
                   </div>
-                  <div class="flex items-center gap-2">
-                    <a href="${f.url || '#'}" target="_blank" class="px-2.5 py-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors flex items-center gap-1">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Abrir
-                    </a>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    ${f.storageId ? `
+                      <button class="btn-preview-file px-2 py-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer" data-storage-id="${f.storageId}" data-name="${f.name}">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> Visualizar
+                      </button>
+                      <button class="btn-download-file px-2 py-1 text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors flex items-center gap-1 cursor-pointer" data-storage-id="${f.storageId}" data-name="${f.name}">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> Baixar
+                      </button>
+                    ` : `
+                      <a href="${f.url || '#'}" target="_blank" class="px-2 py-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors flex items-center gap-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Abrir
+                      </a>
+                    `}
+                    <button class="btn-delete-delivery-file p-1 text-zinc-400 hover:text-rose-600 transition-colors cursor-pointer" data-file-id="${f.id}" data-storage-id="${f.storageId || ''}" title="Excluir arquivo">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
                   </div>
                 </div>
               `).join('')}
@@ -1211,7 +1310,137 @@ export function openDeliveryDetailModal(deliveryId, onUpdate) {
     if (e.key === 'Enter') handleAddCheck();
   };
 
-  // Arquivos
+  // Upload Real de Arquivo
+  const inputFileUpload = modalEl.querySelector('#input-delivery-file-upload');
+  const btnUploadFile = modalEl.querySelector('#btn-upload-delivery-file');
+  if (btnUploadFile && inputFileUpload) {
+    btnUploadFile.onclick = () => inputFileUpload.click();
+  }
+  if (inputFileUpload) {
+    inputFileUpload.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        toast.show(`Enviando ${file.name}...`, 'info');
+        const stored = await storageService.saveFile(file, {
+          category: 'Entregas',
+          deliveryId,
+          deliveryTitle: delivery.title,
+          clientId: delivery.clientId || '',
+          clientName: delivery.clientName || '',
+          projectId: delivery.projectId || '',
+          projectName: delivery.projectName || ''
+        });
+
+        store.addDeliveryFile(deliveryId, {
+          id: stored.id,
+          name: stored.name,
+          storageId: stored.id,
+          size: stored.formattedSize,
+          type: stored.extension || 'file',
+          mimeType: stored.type,
+          uploadedAt: new Date().toLocaleDateString('pt-BR')
+        });
+
+        toast.show('Arquivo anexado com sucesso!', 'success');
+        closeModal();
+        openDeliveryDetailModal(deliveryId, onUpdate);
+      } catch (err) {
+        toast.show('Erro ao salvar arquivo: ' + err.message, 'error');
+      }
+    };
+  }
+
+  // Visualizar Arquivo (Modal de Preview)
+  modalEl.querySelectorAll('.btn-preview-file').forEach(btn => {
+    btn.onclick = async () => {
+      const storageId = btn.dataset.storageId;
+      const fileName = btn.dataset.name;
+      try {
+        const objectUrl = await storageService.getObjectUrl(storageId);
+        const storedFile = await storageService.getFile(storageId);
+        const isPdf = storedFile?.type === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
+        const isImage = (storedFile?.type || '').startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fileName);
+
+        modal.open({
+          title: `Visualização: ${fileName}`,
+          content: `
+            <div class="space-y-4">
+              <div class="flex items-center justify-between text-xs text-zinc-500 pb-2 border-b border-zinc-200 dark:border-zinc-800">
+                <span>Tamanho: ${storedFile?.formattedSize || '-'}</span>
+                <span>Entrega: ${delivery.title}</span>
+              </div>
+              ${isImage ? `
+                <div class="max-h-[70vh] flex items-center justify-center overflow-hidden bg-zinc-950/5 dark:bg-zinc-950/40 rounded-xl p-2">
+                  <img src="${objectUrl}" alt="${fileName}" class="max-w-full max-h-[65vh] object-contain rounded-lg shadow-sm" />
+                </div>
+              ` : isPdf ? `
+                <div class="w-full h-[550px] bg-zinc-100 rounded-xl overflow-hidden">
+                  <iframe src="${objectUrl}#toolbar=0" class="w-full h-full border-0"></iframe>
+                </div>
+              ` : `
+                <div class="p-8 text-center bg-zinc-50 dark:bg-zinc-850 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                  <div class="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-2xl mx-auto">
+                    ${fileName.split('.').pop().toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 class="font-bold text-sm text-zinc-900 dark:text-zinc-100">${fileName}</h4>
+                    <p class="text-xs text-zinc-400 mt-1">Pré-visualização direta indisponível neste navegador.</p>
+                  </div>
+                  <button id="modal-delivery-download-direct" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs">
+                    Baixar Arquivo Agora
+                  </button>
+                </div>
+              `}
+            </div>
+          `,
+          size: isPdf || isImage ? 'lg' : 'md'
+        });
+
+        const dlBtn = document.getElementById('modal-delivery-download-direct');
+        if (dlBtn) {
+          dlBtn.onclick = async () => {
+            await storageService.downloadFile(storageId, fileName);
+          };
+        }
+      } catch (err) {
+        toast.show('Erro ao abrir visualização: ' + err.message, 'error');
+      }
+    };
+  });
+
+  // Download direto
+  modalEl.querySelectorAll('.btn-download-file').forEach(btn => {
+    btn.onclick = async () => {
+      const storageId = btn.dataset.storageId;
+      const fileName = btn.dataset.name;
+      try {
+        await storageService.downloadFile(storageId, fileName);
+        toast.show(`Download de ${fileName} concluído!`, 'success');
+      } catch (err) {
+        toast.show('Erro ao realizar download: ' + err.message, 'error');
+      }
+    };
+  });
+
+  // Excluir Arquivo da Entrega
+  modalEl.querySelectorAll('.btn-delete-delivery-file').forEach(btn => {
+    btn.onclick = async () => {
+      const fileId = btn.dataset.fileId;
+      const storageId = btn.dataset.storageId;
+      if (confirm('Deseja realmente remover este arquivo da entrega?')) {
+        store.deleteDeliveryFile(deliveryId, fileId);
+        if (storageId) {
+          await storageService.deleteFile(storageId);
+        }
+        toast.show('Arquivo removido!', 'info');
+        closeModal();
+        openDeliveryDetailModal(deliveryId, onUpdate);
+      }
+    };
+  });
+
+  // Links externos (legado / opcional)
   const btnShowAddFile = modalEl.querySelector('#btn-show-add-file-form');
   const addFileForm = modalEl.querySelector('#add-file-form-container');
   if (btnShowAddFile) {
@@ -1229,7 +1458,7 @@ export function openDeliveryDetailModal(deliveryId, onUpdate) {
       const syncToDocs = modalEl.querySelector('#chk-sync-to-docs').checked;
 
       if (!name) {
-        alert('Informe o nome do arquivo.');
+        alert('Informe o nome do link/arquivo.');
         return;
       }
 
@@ -1239,7 +1468,7 @@ export function openDeliveryDetailModal(deliveryId, onUpdate) {
         syncToDocuments: syncToDocs
       });
 
-      toast.show('Arquivo anexado!', 'success');
+      toast.show('Link salvo com sucesso!', 'success');
       closeModal();
       openDeliveryDetailModal(deliveryId, onUpdate);
     };
@@ -1309,22 +1538,39 @@ export function openDeliveryDetailModal(deliveryId, onUpdate) {
     toast.show('Prazo atualizado!', 'info');
   };
 
-  // Capa
-  const btnAddCoverPrompt = modalEl.querySelector('#btn-add-cover-prompt');
-  if (btnAddCoverPrompt) {
-    btnAddCoverPrompt.onclick = () => {
-      const url = prompt('Informe a URL da imagem de capa (ex: https://images.unsplash.com/...):');
-      if (url) {
-        store.updateDelivery(deliveryId, { coverImage: url }, 'Imagem de capa adicionada.');
-        closeModal();
-        openDeliveryDetailModal(deliveryId, onUpdate);
+  // Capa Real Upload & Remoção
+  const inputCoverFile = modalEl.querySelector('#input-delivery-cover-file');
+  const btnAddCoverFile = modalEl.querySelector('#btn-add-cover-file');
+  const btnChangeCoverFile = modalEl.querySelector('#btn-change-cover-file');
+  const btnRemoveCover = modalEl.querySelector('#btn-remove-cover');
+
+  if (btnAddCoverFile && inputCoverFile) {
+    btnAddCoverFile.onclick = () => inputCoverFile.click();
+  }
+  if (btnChangeCoverFile && inputCoverFile) {
+    btnChangeCoverFile.onclick = () => inputCoverFile.click();
+  }
+  if (inputCoverFile) {
+    inputCoverFile.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        try {
+          toast.show('Processando imagem de capa...', 'info');
+          const base64 = await storageService.fileToBase64(file);
+          store.updateDelivery(deliveryId, { coverImage: base64 }, 'Imagem de capa atualizada.');
+          toast.show('Capa atualizada com sucesso!', 'success');
+          closeModal();
+          openDeliveryDetailModal(deliveryId, onUpdate);
+        } catch (err) {
+          toast.show('Erro ao processar imagem: ' + err.message, 'error');
+        }
       }
     };
   }
-  const btnRemoveCover = modalEl.querySelector('#btn-remove-cover');
   if (btnRemoveCover) {
     btnRemoveCover.onclick = () => {
       store.updateDelivery(deliveryId, { coverImage: '' }, 'Imagem de capa removida.');
+      toast.show('Capa removida!', 'info');
       closeModal();
       openDeliveryDetailModal(deliveryId, onUpdate);
     };
@@ -1507,15 +1753,22 @@ export function openCreateDeliveryModal(initialValues = {}, onDone) {
           ></textarea>
         </div>
 
-        <!-- URL DE CAPA -->
+        <!-- IMAGEM DE CAPA (UPLOAD OU URL) -->
         <div>
-          <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase mb-1">URL Imagem de Capa (Opcional)</label>
-          <input 
-            type="url" 
-            name="coverImage" 
-            placeholder="https://images.unsplash.com/..." 
-            class="w-full text-xs p-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-600 text-zinc-900 dark:text-zinc-100"
-          />
+          <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase mb-1">Imagem de Capa (Opcional)</label>
+          <div class="flex items-center gap-2">
+            <input 
+              type="text" 
+              name="coverImage" 
+              id="create-delivery-cover-input"
+              placeholder="Cole a URL ou faça upload de imagem..." 
+              class="flex-1 text-xs p-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-600 text-zinc-900 dark:text-zinc-100"
+            />
+            <input type="file" id="create-delivery-file-pick" accept="image/png,image/jpeg,image/jpg,image/webp" capture="environment" class="hidden" />
+            <button type="button" id="btn-create-pick-cover" class="px-3 py-2.5 text-xs font-medium border border-zinc-200 dark:border-zinc-700 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1.5 cursor-pointer">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg> Upload
+            </button>
+          </div>
         </div>
 
         <!-- BOTÕES -->
@@ -1539,6 +1792,25 @@ export function openCreateDeliveryModal(initialValues = {}, onDone) {
   modalEl.onclick = (e) => {
     if (e.target === modalEl) closeModal();
   };
+
+  const btnPickCover = modalEl.querySelector('#btn-create-pick-cover');
+  const filePick = modalEl.querySelector('#create-delivery-file-pick');
+  const coverInput = modalEl.querySelector('#create-delivery-cover-input');
+  if (btnPickCover && filePick) {
+    btnPickCover.onclick = () => filePick.click();
+    filePick.onchange = async (e) => {
+      const f = e.target.files[0];
+      if (f) {
+        try {
+          const b64 = await storageService.fileToBase64(f);
+          coverInput.value = b64;
+          toast.show('Capa carregada!', 'info');
+        } catch (err) {
+          toast.show('Erro ao processar imagem: ' + err.message, 'error');
+        }
+      }
+    };
+  }
 
   const form = modalEl.querySelector('#create-delivery-form');
   form.onsubmit = (e) => {

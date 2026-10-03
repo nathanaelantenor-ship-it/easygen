@@ -1,7 +1,8 @@
-﻿import { store } from '../state/store.js';
+import { store } from '../state/store.js';
 import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
+import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
 
 let goalsScope = 'all'; // all | business | personal
 
@@ -25,7 +26,8 @@ export function renderGoalsView(container, onNavigate) {
           <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Metas & Objetivos</h2>
           <p class="text-xs text-zinc-500">Acompanhamento de metas financeiras e conquistas pessoais com avanço automático por lançamentos.</p>
         </div>
-        <div>
+        <div class="flex items-center gap-2">
+          ${renderExportButtonHtml('goals-export-dropdown')}
           <button id="goals-new-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             <span>Nova Meta</span>
@@ -142,6 +144,41 @@ export function renderGoalsView(container, onNavigate) {
   container.querySelector('#goals-new-btn').onclick = () => {
     openCreateGoalModal(() => renderGoalsView(container, onNavigate));
   };
+
+  // Universal Export Handler
+  bindExportButton(container, 'goals-export-dropdown', () => {
+    const headers = ['Meta', 'Âmbito', 'Categoria', 'Valor Atual', 'Valor Alvo', 'Progresso', 'Status', 'Prazo'];
+    const rows = filteredGoals.map(g => {
+      const current = g.currentValue || 0;
+      const target = g.targetValue || 1;
+      const percent = Math.min(100, Math.round((current / target) * 100));
+      return [
+        g.title || '',
+        g.scope === 'business' ? 'Empresa' : 'Pessoal',
+        g.category || 'Geral',
+        formatCurrency(current),
+        formatCurrency(target),
+        `${percent}%`,
+        current >= target ? 'Concluída' : 'Em Andamento',
+        formatDate(g.deadline)
+      ];
+    });
+
+    const summary = [
+      { label: 'Total de Metas', value: goals.length },
+      { label: 'Metas Concluídas', value: completedGoals },
+      { label: 'Progresso Médio', value: `${avgProgress}%` }
+    ];
+
+    return {
+      filename: `metas_objetivos_${new Date().toISOString().split('T')[0]}`,
+      title: 'Plano de Metas & Objetivos Estratégicos',
+      headers,
+      rows,
+      summary,
+      filters: `Âmbito: ${goalsScope === 'all' ? 'Todas' : goalsScope === 'business' ? 'Empresa' : 'Pessoal'}`
+    };
+  });
 }
 
 function openCreateGoalModal(onSuccess) {
