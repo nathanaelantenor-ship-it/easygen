@@ -196,3 +196,62 @@ Executamos a rotina automatizada via navegador headless Edge (`verify_routes.ps1
 - **Branch**: `main`
 - **Tag Oficial de Release**: `v2.0.0`
 - **Mensagem**: `APP TESTE — V2 / SISTEMA OPERACIONAL PARA NEGOCIOS CRIATIVOS`
+
+---
+
+## 🔐 APP TESTE V2.1 — LOGIN, AUTENTICAÇÃO E DADOS PERSISTENTES
+
+A transição de protótipo compartilhado para **SaaS multiusuário isolado** foi concluída com êxito total:
+
+### 1. Guardião de Rotas Estrito & Telas Públicas
+- **Rotas Públicas**: `#login`, `#register`, `#forgot-password`.
+- **Acesso Não Autenticado Bloqueado**: Qualquer tentativa de acessar rotas operacionais (`#dashboard`, `#crm`, `#clients`, etc.) redireciona instantaneamente para `#login`. Nenhuma tela com dados mockados é exibida para visitantes não autenticados.
+- **Telas Públicas Dedicadas**:
+  - `LoginView.js`: Formulário limpo com suporte a Google OAuth e Email/Senha, validações de erro e link para cadastro e recuperação.
+  - `RegisterView.js`: Cadastro seguro com nome, e-mail, senha com confirmação e nicho criativo.
+  - `ForgotPasswordView.js`: Solicitação de link de redefinição de credenciais.
+
+### 2. Autenticação Híbrida Real (Supabase Cloud + Web Crypto SHA-256)
+- [`src/services/authService.js`](file:///C:/Users/Nathan/Desktop/App%20Easy%20Gen/src/services/authService.js):
+  - Integração nativa com Supabase Auth (`supabase.auth.signUp`, `signInWithPassword`, `signInWithOAuth`, `signOut`, `resetPasswordForEmail`).
+  - Fallback local seguro com criptografia nativa **SHA-256** e salt randômico criptográfico (`crypto.subtle` + `crypto.randomUUID`) — **nenhuma senha é salva em texto puro**.
+  - Gerenciamento de sessão reativo em `APP_TESTE_AUTH_SESSION_V2`.
+
+### 3. Banco de Dados Cloud PostgreSQL & RLS Multi-tenant
+- [`supabase/migrations/20261003_v2_1_auth_schema.sql`](file:///C:/Users/Nathan/Desktop/App%20Easy%20Gen/supabase/migrations/20261003_v2_1_auth_schema.sql):
+  - 12 tabelas criadas com coluna obrigatória `user_id uuid references auth.users(id) on delete cascade`.
+  - **Row Level Security (RLS)** ativado em 100% das tabelas com políticas restritas `auth.uid() = user_id`.
+
+### 4. Zero Dados Mockados em Novas Contas & Isolamento Absoluto
+- [`src/state/store.js`](file:///C:/Users/Nathan/Desktop/App%20Easy%20Gen/src/state/store.js):
+  - Estado isolado por chave individual `APP_TESTE_DATA_USER_${userId}`.
+  - Novas contas iniciam com estado 100% limpo: 0 clientes, 0 leads, 0 projetos, 0 entregas, 0 transações (R$ 0,00 de receita/despesa/a receber), 0 XP (Nível 1).
+  - O Usuário A (`usuarioa@email.com`) e o Usuário B (`usuariob@email.com`) operam em silos completamente independentes.
+
+### 5. Onboarding Guiado e Empty States Acolhedores
+- [`src/views/DashboardView.js`](file:///C:/Users/Nathan/Desktop/App%20Easy%20Gen/src/views/DashboardView.js):
+  - Banner inteligente **"Seu negócio começa aqui"** com indicador de progresso (ex: 0/4 concluídos):
+    1. Cadastre seu primeiro cliente (`#clients`)
+    2. Adicione seus serviços principais (`#services`)
+    3. Crie seu primeiro projeto ou entrega (`#projects`)
+    4. Registre sua primeira receita (`#finance`)
+  - Cards de projetos, entregas e lançamentos com empty states informativos e botões de ação direta.
+  - Gráfico de fluxo de caixa calcula dados reais da conta atual, sem valores fictícios.
+
+### 6. Testes Automatizados de Isolamento
+- Validação ponta a ponta via Edge headless:
+  - Redirecionamento forçado de rota raiz e `#dashboard` deslogado para `#login` (PASS).
+  - Criação de Usuário A com 0 dados (PASS).
+  - Criação de cliente "Studio Alpha" para Usuário A (PASS).
+  - Logout de Usuário A e cadastro de Usuário B (PASS).
+  - Usuário B com 0 clientes, sem acesso ao Studio Alpha de A (PASS).
+  - Criação de cliente "Beta Tech" para Usuário B (PASS).
+  - Relogin de Usuário A preservando apenas Studio Alpha (PASS).
+  - Rejeição de senhas incorretas (PASS).
+
+---
+
+## 📦 Commit & Publicação no GitHub
+- **Commit**: `d8cde84`
+- **Mensagem**: `APP TESTE — V2.1 — AUTH + PERSISTÊNCIA POR USUÁRIO`
+- **Deploy**: Sincronizado com GitHub `main` e publicado para deploy contínuo na Vercel.
