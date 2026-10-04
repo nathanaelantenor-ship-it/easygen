@@ -135,11 +135,19 @@ export function renderLoginView(container, onNavigate) {
 
   googleBtn.onclick = async () => {
     try {
+      errorAlert.classList.add('hidden');
+      googleBtn.disabled = true;
+      googleBtn.classList.add('opacity-75');
       await auth.signInWithGoogle();
       toast.success('Autenticado com sucesso via Google!');
       if (onNavigate) onNavigate('dashboard');
     } catch (err) {
-      showError(err.message || 'Não foi possível entrar com o Google.');
+      if (err.message && !err.message.includes('cancelado')) {
+        showError(err.message || 'Não foi possível entrar com o Google.');
+      }
+    } finally {
+      googleBtn.disabled = false;
+      googleBtn.classList.remove('opacity-75');
     }
   };
 }

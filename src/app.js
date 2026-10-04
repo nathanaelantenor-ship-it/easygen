@@ -192,22 +192,25 @@ export function initApp() {
       };
     });
 
-    // Logout Button in Sidebar
+    // Logout Button in Sidebar & Navbar
+    const handleLogout = () => {
+      modal.confirm({
+        title: 'Sair da conta?',
+        message: 'Deseja realmente encerrar a sessão? Seus dados continuam salvos com segurança.',
+        confirmText: 'Sair',
+        confirmColor: 'bg-rose-600 hover:bg-rose-700',
+        onConfirm: async () => {
+          await auth.signOut();
+          navigate('login');
+        }
+      });
+    };
+
     const logoutBtn = document.getElementById('sidebar-logout-btn');
-    if (logoutBtn) {
-      logoutBtn.onclick = () => {
-        modal.confirm({
-          title: 'Sair da conta?',
-          message: 'Você precisará informar seu e-mail e senha para acessar novamente seus dados.',
-          confirmText: 'Sair',
-          confirmColor: 'bg-rose-600 hover:bg-rose-700',
-          onConfirm: async () => {
-            await auth.signOut();
-            navigate('login');
-          }
-        });
-      };
-    }
+    if (logoutBtn) logoutBtn.onclick = handleLogout;
+
+    const navLogoutBtn = document.getElementById('nav-logout-btn');
+    if (navLogoutBtn) navLogoutBtn.onclick = handleLogout;
 
     // Quick Actions
     const quickBtn = document.getElementById('nav-quick-actions-btn');

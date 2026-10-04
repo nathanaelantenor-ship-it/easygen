@@ -2,13 +2,37 @@ import { initialData } from './initialData.js';
 import { auth } from '../services/authService.js';
 import { getSupabase } from '../config/supabase.js';
 
-function getUserStorageKey(userId) {
-  return `APP_TESTE_DATA_USER_${userId}`;
+export function getUserStorageKey(userOrId) {
+  if (!userOrId) return 'APP_TESTE_DATA_DEFAULT';
+  let email = '';
+  let id = '';
+  if (typeof userOrId === 'object') {
+    email = userOrId.email;
+    id = userOrId.id;
+  } else if (typeof userOrId === 'string') {
+    if (userOrId.includes('@')) {
+      email = userOrId;
+    } else {
+      id = userOrId;
+    }
+  }
+
+  if (email) {
+    try {
+      const cleanEmail = email.toLowerCase().trim();
+      const safeKey = btoa(encodeURIComponent(cleanEmail)).replace(/[^a-zA-Z0-9]/g, '');
+      return `APP_TESTE_DATA_USER_${safeKey}`;
+    } catch (e) {
+      return `APP_TESTE_DATA_USER_${email.toLowerCase().trim().replace(/[^a-zA-Z0-9]/g, '_')}`;
+    }
+  }
+  return `APP_TESTE_DATA_USER_${id || 'default'}`;
 }
 
 class Store {
   constructor() {
     this.listeners = new Set();
+    this.currentUser = null;
     this.currentUserId = null;
     this.state = null;
     this.initAuthSync();
@@ -16,12 +40,14 @@ class Store {
 
   initAuthSync() {
     const user = auth.getCurrentUser();
-    if (user && user.id) {
+    if (user && (user.id || user.email)) {
       this.initializeUserSession(user);
     }
     auth.subscribe((updatedUser) => {
-      if (updatedUser && updatedUser.id) {
-        if (this.currentUserId !== updatedUser.id) {
+      if (updatedUser && (updatedUser.id || updatedUser.email)) {
+        const newEmail = (updatedUser.email || '').toLowerCase().trim();
+        const curEmail = (this.currentUser?.email || '').toLowerCase().trim();
+        if (newEmail !== curEmail || this.currentUserId !== updatedUser.id) {
           this.initializeUserSession(updatedUser);
         }
       } else {
@@ -31,7 +57,8 @@ class Store {
   }
 
   initializeUserSession(user) {
-    this.currentUserId = user.id;
+    this.currentUser = user;
+    this.currentUserId = user.id || user.email;
     this.state = this.loadUserState(user);
     this.saveState();
     this.syncWithSupabase();
@@ -39,6 +66,7 @@ class Store {
   }
 
   clearUserSession() {
+    this.currentUser = null;
     this.currentUserId = null;
     this.state = null;
     this.notify('user_logged_out', null);
@@ -124,8 +152,26 @@ class Store {
 
   loadUserState(user) {
     try {
-      const key = getUserStorageKey(user.id);
-      const stored = localStorage.getItem(key);
+      const primaryKey = getUserStorageKey(user);
+      let stored = localStorage.getItem(primaryKey);
+
+      // Migração e compatibilidade automática de dados salvos por ID anterior
+      if (!stored && user && user.id) {
+        const legacyIdKey = `APP_TESTE_DATA_USER_${user.id}`;
+        stored = localStorage.getItem(legacyIdKey);
+        if (stored) {
+          localStorage.setItem(primaryKey, stored);
+        }
+      }
+
+      if (!stored && user && user.email) {
+        const legacyEmailKey = `APP_TESTE_DATA_USER_${user.email.toLowerCase().trim()}`;
+        stored = localStorage.getItem(legacyEmailKey);
+        if (stored) {
+          localStorage.setItem(primaryKey, stored);
+        }
+      }
+
       if (stored) {
         const parsed = JSON.parse(stored);
         if (!parsed.deliveries) parsed.deliveries = [];
@@ -165,9 +211,9 @@ class Store {
   }
 
   saveState() {
-    if (!this.currentUserId || !this.state) return;
+    if ((!this.currentUser && !this.currentUserId) || !this.state) return;
     try {
-      const key = getUserStorageKey(this.currentUserId);
+      const key = getUserStorageKey(this.currentUser || this.currentUserId);
       localStorage.setItem(key, JSON.stringify(this.state));
     } catch (e) {
       console.error('Erro ao salvar no LocalStorage:', e);
@@ -177,23 +223,177 @@ class Store {
 
   async syncWithSupabase() {
     const supabase = getSupabase();
-    if (!supabase || !this.currentUserId || !this.state) return;
+    if (!supabase || (!this.currentUser && !this.currentUserId) || !this.state) return;
+
     try {
-      // Upsert profile in Supabase
-      await supabase.from('profiles').upsert({
-        id: this.currentUserId,
-        name: this.state.profile.name,
-        email: this.state.profile.email,
-        avatar: this.state.profile.avatar,
-        business_type: this.state.profile.role,
-        theme: this.state.profile.theme,
-        xp: this.state.profile.xp,
-        level: this.state.profile.level,
-        dashboard_widgets: this.state.profile.dashboardWidgets,
-        updated_at: new Date().toISOString()
-      });
+      // 1. Verifica se há sessão ativa no Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return;
+      const sbUserId = session.user.id;
+
+      // 2. Sincroniza Perfil
+      if (this.state.profile) {
+        await supabase.from('profiles').upsert({
+          id: sbUserId,
+          name: this.state.profile.name,
+          email: this.state.profile.email,
+          avatar: this.state.profile.avatar,
+          business_type: this.state.profile.role,
+          theme: this.state.profile.theme,
+          xp: this.state.profile.xp,
+          level: this.state.profile.level,
+          dashboard_widgets: this.state.profile.dashboardWidgets,
+          updated_at: new Date().toISOString()
+        });
+      }
+
+      // 3. Sincroniza Clientes (Bidirecional)
+      const { data: remoteClients } = await supabase.from('clients').select('*').eq('user_id', sbUserId);
+      if (remoteClients && remoteClients.length > 0) {
+        let changed = false;
+        remoteClients.forEach(rc => {
+          const idx = this.state.clients.findIndex(c => c.id === rc.id);
+          if (idx === -1) {
+            this.state.clients.push({
+              id: rc.id,
+              name: rc.name,
+              company: rc.company || '',
+              phone: rc.phone || '',
+              whatsapp: rc.whatsapp || '',
+              email: rc.email || '',
+              channel: rc.channel || 'Indicação',
+              clientType: rc.client_type || 'pontual',
+              status: rc.status || 'active',
+              totalGenerated: Number(rc.total_generated || 0),
+              projectsCount: Number(rc.projects_count || 0),
+              notes: rc.notes || '',
+              createdAt: rc.created_at
+            });
+            changed = true;
+          }
+        });
+        if (changed) this.saveState();
+      }
+
+      if (this.state.clients && this.state.clients.length > 0) {
+        for (const c of this.state.clients) {
+          await supabase.from('clients').upsert({
+            id: c.id,
+            user_id: sbUserId,
+            name: c.name,
+            company: c.company || '',
+            phone: c.phone || '',
+            whatsapp: c.whatsapp || '',
+            email: c.email || '',
+            channel: c.channel || 'Indicação',
+            client_type: c.clientType || 'pontual',
+            status: c.status || 'active',
+            total_generated: c.totalGenerated || 0,
+            projects_count: c.projectsCount || 0,
+            notes: c.notes || ''
+          });
+        }
+      }
+
+      // 4. Sincroniza Transações (Bidirecional)
+      const { data: remoteTxs } = await supabase.from('transactions').select('*').eq('user_id', sbUserId);
+      if (remoteTxs && remoteTxs.length > 0) {
+        let changed = false;
+        remoteTxs.forEach(rt => {
+          const idx = this.state.transactions.findIndex(t => t.id === rt.id);
+          if (idx === -1) {
+            this.state.transactions.push({
+              id: rt.id,
+              title: rt.title,
+              type: rt.type,
+              amount: Number(rt.amount),
+              category: rt.category,
+              scope: rt.scope || 'business',
+              dueDate: rt.due_date,
+              paidAt: rt.paid_at,
+              status: rt.status,
+              installment: rt.installment,
+              clientId: rt.client_id,
+              projectId: rt.project_id
+            });
+            changed = true;
+          }
+        });
+        if (changed) this.saveState();
+      }
+
+      if (this.state.transactions && this.state.transactions.length > 0) {
+        for (const t of this.state.transactions) {
+          await supabase.from('transactions').upsert({
+            id: t.id,
+            user_id: sbUserId,
+            title: t.title,
+            type: t.type,
+            amount: t.amount,
+            category: t.category,
+            scope: t.scope || 'business',
+            due_date: t.dueDate,
+            paid_at: t.paidAt || null,
+            status: t.status,
+            installment: t.installment || null,
+            client_id: t.clientId || null,
+            project_id: t.projectId || null
+          });
+        }
+      }
+
+      // 5. Sincroniza Projetos
+      const { data: remoteProjects } = await supabase.from('projects').select('*').eq('user_id', sbUserId);
+      if (remoteProjects && remoteProjects.length > 0) {
+        let changed = false;
+        remoteProjects.forEach(rp => {
+          const idx = this.state.projects.findIndex(p => p.id === rp.id);
+          if (idx === -1) {
+            this.state.projects.push({
+              id: rp.id,
+              title: rp.title,
+              clientId: rp.client_id,
+              clientName: rp.client_name,
+              stage: rp.stage,
+              progress: rp.progress || 0,
+              value: Number(rp.value || 0),
+              deadline: rp.deadline,
+              links: rp.links || {},
+              description: rp.description || '',
+              createdAt: rp.created_at
+            });
+            changed = true;
+          }
+        });
+        if (changed) this.saveState();
+      }
     } catch (err) {
-      console.warn('Erro na sincronização de perfil com Supabase:', err);
+      console.debug('Sincronização em segundo plano Supabase:', err.message);
+    }
+  }
+
+  // Envio reativo instantâneo de entidade em segundo plano para o Supabase
+  async syncEntityToSupabase(table, payload) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return;
+      await supabase.from(table).upsert({ ...payload, user_id: session.user.id });
+    } catch (e) {
+      console.debug(`Falha ao sincronizar ${table} no Supabase:`, e.message);
+    }
+  }
+
+  async deleteEntityFromSupabase(table, id) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return;
+      await supabase.from(table).delete().eq('id', id).eq('user_id', session.user.id);
+    } catch (e) {
+      console.debug(`Falha ao remover ${table}:${id} no Supabase:`, e.message);
     }
   }
 
