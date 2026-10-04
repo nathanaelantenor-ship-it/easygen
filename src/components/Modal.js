@@ -38,7 +38,7 @@ class ModalManager {
     panel.innerHTML = `
       <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
         <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-100">${title}</h3>
-        <button id="modal-close-btn" class="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+        <button id="modal-close-btn" class="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
@@ -67,7 +67,8 @@ class ModalManager {
       if (e.target === overlay) closeModal();
     };
 
-    panel.querySelector('#modal-close-btn').onclick = closeModal;
+    const closeBtn = panel.querySelector('#modal-close-btn');
+    if (closeBtn) closeBtn.onclick = closeModal;
 
     requestAnimationFrame(() => {
       overlay.classList.remove('opacity-0');
@@ -80,6 +81,63 @@ class ModalManager {
     });
 
     return { panel, close: closeModal };
+  }
+
+  confirm({
+    title = 'Confirmação',
+    message = 'Deseja continuar com esta ação?',
+    confirmText = 'Confirmar',
+    cancelText = 'Cancelar',
+    confirmColor = 'bg-rose-600 hover:bg-rose-700',
+    onConfirm,
+    onCancel
+  }) {
+    const content = `
+      <div class="space-y-4 select-none">
+        <p class="text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">${message}</p>
+        <div class="pt-3 flex items-center justify-end gap-2 border-t border-zinc-100 dark:border-zinc-800">
+          <button id="modal-confirm-cancel" class="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer">
+            ${cancelText}
+          </button>
+          <button id="modal-confirm-submit" class="px-4 py-2 rounded-xl text-xs font-bold text-white ${confirmColor} transition-all shadow-xs cursor-pointer active:scale-95">
+            ${confirmText}
+          </button>
+        </div>
+      </div>
+    `;
+
+    const m = this.open({
+      title,
+      content,
+      size: 'md'
+    });
+
+    const cancelBtn = m.panel.querySelector('#modal-confirm-cancel');
+    const submitBtn = m.panel.querySelector('#modal-confirm-submit');
+
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        m.close();
+        if (onCancel) onCancel();
+      };
+    }
+
+    if (submitBtn) {
+      submitBtn.onclick = async () => {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-75');
+        submitBtn.innerHTML = '<span>Processando...</span>';
+        try {
+          if (onConfirm) await onConfirm();
+        } catch (err) {
+          console.error('Erro na confirmação:', err);
+        } finally {
+          m.close();
+        }
+      };
+    }
+
+    return m;
   }
 
   close() {

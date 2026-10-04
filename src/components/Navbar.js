@@ -54,14 +54,15 @@ export function renderNavbar(title) {
         <div class="flex items-center pl-1 sm:pl-2 border-l border-zinc-200 dark:border-zinc-800">
           <button 
             id="nav-logout-btn" 
+            data-action="logout"
             title="Sair da conta" 
             class="flex items-center gap-1.5 py-1.5 px-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 hover:border-rose-300 dark:hover:border-rose-900 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-zinc-600 dark:text-zinc-300 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-semibold transition-all cursor-pointer shadow-2xs active:scale-95"
           >
-            <div class="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center">
+            <div class="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center pointer-events-none">
               ${userInitials}
             </div>
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-            <span class="hidden md:inline">Sair</span>
+            <svg class="w-3.5 h-3.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            <span class="hidden md:inline pointer-events-none">Sair</span>
           </button>
         </div>
       </div>

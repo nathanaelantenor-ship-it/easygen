@@ -183,6 +183,45 @@ export function initApp() {
     }
   }
 
+  // Logout Global Handler
+  const handleLogout = () => {
+    try {
+      if (modal && typeof modal.confirm === 'function') {
+        modal.confirm({
+          title: 'Sair da conta?',
+          message: 'Deseja realmente encerrar a sessão? Seus dados continuam salvos com segurança.',
+          confirmText: 'Sair',
+          confirmColor: 'bg-rose-600 hover:bg-rose-700',
+          onConfirm: async () => {
+            await auth.signOut();
+            window.location.hash = 'login';
+            renderApp();
+          }
+        });
+        return;
+      }
+    } catch (err) {
+      console.warn('Erro no modal customizado de confirmação:', err);
+    }
+
+    if (window.confirm('Deseja realmente sair da sua conta?')) {
+      auth.signOut().then(() => {
+        window.location.hash = 'login';
+        renderApp();
+      });
+    }
+  };
+
+  // Delegated click listener para qualquer botão de logout na interface
+  document.addEventListener('click', (e) => {
+    const logoutBtn = e.target.closest('#nav-logout-btn, #sidebar-logout-btn, #mobile-drawer-logout, [data-action="logout"]');
+    if (logoutBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleLogout();
+    }
+  });
+
   function attachGlobalEvents() {
     // Navigation clicks in sidebar
     document.querySelectorAll('[data-nav]').forEach(btn => {
@@ -191,20 +230,6 @@ export function initApp() {
         navigate(mod);
       };
     });
-
-    // Logout Button in Sidebar & Navbar
-    const handleLogout = () => {
-      modal.confirm({
-        title: 'Sair da conta?',
-        message: 'Deseja realmente encerrar a sessão? Seus dados continuam salvos com segurança.',
-        confirmText: 'Sair',
-        confirmColor: 'bg-rose-600 hover:bg-rose-700',
-        onConfirm: async () => {
-          await auth.signOut();
-          navigate('login');
-        }
-      });
-    };
 
     const logoutBtn = document.getElementById('sidebar-logout-btn');
     if (logoutBtn) logoutBtn.onclick = handleLogout;

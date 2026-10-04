@@ -103,16 +103,29 @@ export function openMobileMenuDrawer(currentModule, onNavigate) {
   if (logoutBtn) {
     logoutBtn.onclick = () => {
       drawer.close();
-      modal.confirm({
-        title: 'Sair da conta?',
-        message: 'Você precisará informar seu e-mail e senha para acessar novamente seus dados.',
-        confirmText: 'Sair',
-        confirmColor: 'bg-rose-600 hover:bg-rose-700',
-        onConfirm: async () => {
-          await auth.signOut();
-          if (onNavigate) onNavigate('login');
+      try {
+        if (modal && typeof modal.confirm === 'function') {
+          modal.confirm({
+            title: 'Sair da conta?',
+            message: 'Você precisará informar seu e-mail e senha para acessar novamente seus dados.',
+            confirmText: 'Sair',
+            confirmColor: 'bg-rose-600 hover:bg-rose-700',
+            onConfirm: async () => {
+              await auth.signOut();
+              if (onNavigate) onNavigate('login');
+            }
+          });
+          return;
         }
-      });
+      } catch (err) {
+        console.warn('Erro no modal de logout mobile:', err);
+      }
+
+      if (window.confirm('Deseja realmente sair da sua conta?')) {
+        auth.signOut().then(() => {
+          if (onNavigate) onNavigate('login');
+        });
+      }
     };
   }
 }
