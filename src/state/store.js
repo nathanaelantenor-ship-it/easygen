@@ -643,6 +643,13 @@ class Store {
 
     prop.status = 'aprovada';
 
+    // Condição de pagamento aprovada (Serviço -> Proposta -> Projeto -> Financeiro)
+    const paymentCondition = prop.paymentCondition || {
+      type: 'unico',
+      label: prop.paymentTerms || 'Pagamento único',
+      totalAmount: prop.finalValue || prop.value || 0
+    };
+
     // Criação automática do projeto relacionado
     const newProject = {
       id: 'proj-' + Date.now(),
@@ -658,6 +665,7 @@ class Store {
       deadlineDate: new Date(Date.now() + 20 * 86400000).toISOString().split('T')[0],
       responsible: this.state.profile.name,
       notes: `Gerado automaticamente a partir da proposta ${prop.number}. Observações: ${prop.notes || ''}`,
+      paymentCondition: paymentCondition,
       tasks: (prop.deliverables || ['Alinhamento de briefing', 'Execução', 'Entrega e validação']).map((d, i) => ({
         id: `pt-${Date.now()}-${i}`,
         title: typeof d === 'string' ? d : d.title,
@@ -676,9 +684,80 @@ class Store {
       }
     }
 
+    // Geração do Financeiro conectado de acordo com a condição de pagamento
+    const totalProjValue = prop.finalValue || prop.value || 0;
+    const isInstallmentCondition = (paymentCondition && (paymentCondition.type === 'parcelado' || paymentCondition.type === 'entrada_parcelas' || paymentCondition.type === 'parcelamento_sem_entrada')) ||
+      prop.paymentConditionType === 'entrada_parcelas' || prop.paymentConditionType === 'parcelamento_sem_entrada' ||
+      (typeof prop.paymentCondition === 'string' && (prop.paymentCondition.toLowerCase().includes('parcel') || prop.paymentCondition.toLowerCase().includes('entrada')));
+
+    const isRecurringCondition = (paymentCondition && paymentCondition.type === 'recorrente') ||
+      prop.paymentConditionType === 'recorrente' ||
+      (typeof prop.paymentCondition === 'string' && prop.paymentCondition.toLowerCase().includes('recorrente'));
+
+    if (isInstallmentCondition) {
+      const downPayment = (paymentCondition && paymentCondition.downPaymentAmount !== undefined) 
+        ? paymentCondition.downPaymentAmount 
+        : (prop.downPayment !== undefined ? prop.downPayment : 0);
+      const installmentsCount = (paymentCondition && paymentCondition.installmentsCount) || prop.installmentsCount || 2;
+      const interval = (paymentCondition && paymentCondition.interval) || prop.interval || 'mensal';
+      const firstDueDate = (paymentCondition && paymentCondition.firstDueDate) || prop.firstDueDate;
+
+      this.addInstallmentIncomeGroup({
+        title: newProject.title,
+        scope: 'business',
+        totalAmount: totalProjValue,
+        downPayment,
+        downPaymentDate: (paymentCondition && paymentCondition.downPaymentDate) || prop.downPaymentDate || new Date().toISOString().split('T')[0],
+        downPaymentStatus: (paymentCondition && paymentCondition.downPaymentStatus) || prop.downPaymentStatus || 'pending',
+        installmentsCount,
+        interval,
+        firstDueDate,
+        installmentsList: (paymentCondition && paymentCondition.installmentsList) || prop.installmentsList,
+        paymentMethod: (paymentCondition && paymentCondition.paymentMethod) || prop.paymentMethod || 'Pix',
+        category: 'Serviços & Projetos',
+        clientId: prop.clientId,
+        clientName: prop.clientName,
+        projectId: newProject.id,
+        proposalId: prop.id,
+        serviceId: prop.serviceId,
+        notes: `Originado da proposta aprovada ${prop.number}`
+      });
+    } else if (isRecurringCondition) {
+      this.addRecurringRule({
+        title: newProject.title,
+        type: 'income',
+        scope: 'business',
+        amount: totalProjValue,
+        startDate: new Date().toISOString().split('T')[0],
+        frequency: (paymentCondition && paymentCondition.frequency) || prop.frequency || 'mensal',
+        durationMode: 'infinite',
+        category: 'Recorrência / Retainer',
+        clientId: prop.clientId,
+        clientName: prop.clientName,
+        projectId: newProject.id
+      });
+    } else {
+      // Pagamento único
+      this.addTransaction({
+        title: newProject.title,
+        type: 'income',
+        scope: 'business',
+        amount: totalProjValue,
+        date: new Date().toISOString().split('T')[0],
+        dueDate: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+        status: 'pending',
+        category: 'Serviços & Projetos',
+        paymentMethod: 'Pix',
+        clientId: prop.clientId,
+        clientName: prop.clientName,
+        projectId: newProject.id,
+        notes: `Originado da proposta aprovada ${prop.number}`
+      });
+    }
+
     this.addNotification({
       title: 'Proposta Aprovada & Projeto Criado!',
-      message: `A proposta ${prop.number} foi aprovada e gerou o projeto '${newProject.title}'.`,
+      message: `A proposta ${prop.number} foi aprovada e gerou o projeto '${newProject.title}' e financeiro vinculado.`,
       type: 'success',
       link: 'projects'
     });
@@ -730,6 +809,17 @@ class Store {
     this.saveState();
   }
   // --- FINANCEIRO & METAS CONECTADAS ---
+  recalculateClientLtv(clientId) {
+    if (!clientId) return;
+    const client = (this.state.clients || []).find(c => c.id === clientId);
+    if (!client) return;
+    const paidTxs = (this.state.transactions || []).filter(t => t.clientId === clientId && t.type === 'income' && t.status === 'paid');
+    client.totalGenerated = paidTxs.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    if (client.projectsCount > 0) {
+      client.averageTicket = Math.round(client.totalGenerated / client.projectsCount);
+    }
+  }
+
   addTransaction(tx) {
     const newTx = {
       id: 'tx-' + Date.now(),
@@ -742,20 +832,14 @@ class Store {
     newTx.amount = parseFloat(newTx.amount) || 0;
     this.state.transactions.unshift(newTx);
 
-    // Conexão com Clientes: se for receita com cliente vinculado
-    if (newTx.type === 'income' && newTx.clientId) {
-      const client = this.state.clients.find(c => c.id === newTx.clientId);
-      if (client) {
-        client.totalGenerated = (client.totalGenerated || 0) + newTx.amount;
-        if (client.projectsCount > 0) {
-          client.averageTicket = Math.round(client.totalGenerated / client.projectsCount);
-        }
-      }
+    // Conexão com Clientes: APENAS se for receita recebida/baixada
+    if (newTx.type === 'income' && newTx.clientId && newTx.status === 'paid') {
+      this.recalculateClientLtv(newTx.clientId);
     }
 
-    // Conexão com Metas: avanço automático conforme receitas ou lançamentos vinculados
-    if (newTx.type === 'income') {
-      const relatedGoals = this.state.goals.filter(g => 
+    // Conexão com Metas: avanço automático conforme receitas recebidas
+    if (newTx.type === 'income' && newTx.status === 'paid') {
+      const relatedGoals = (this.state.goals || []).filter(g => 
         g.scope === newTx.scope && 
         (g.linkedCategory === newTx.category || !g.linkedCategory || g.category === 'Receita')
       );
@@ -768,21 +852,15 @@ class Store {
     return newTx;
   }
 
-  markTransactionAsPaid(id) {
+  markTransactionAsPaid(id, paidDate = null) {
     const tx = this.state.transactions.find(t => t.id === id);
     if (!tx) return null;
     tx.status = 'paid';
-    tx.paidAt = new Date().toISOString().split('T')[0];
+    tx.paidAt = paidDate || new Date().toISOString().split('T')[0];
 
-    // Se for receita com cliente vinculado, atualiza LTV
+    // Se for receita com cliente vinculado, recalcula LTV precisamente
     if (tx.type === 'income' && tx.clientId) {
-      const client = this.state.clients.find(c => c.id === tx.clientId);
-      if (client) {
-        client.totalGenerated = (client.totalGenerated || 0) + (tx.amount || 0);
-        if (client.projectsCount > 0) {
-          client.averageTicket = Math.round(client.totalGenerated / client.projectsCount);
-        }
-      }
+      this.recalculateClientLtv(tx.clientId);
     }
 
     // Atualiza metas vinculadas
@@ -801,51 +879,202 @@ class Store {
     return tx;
   }
 
-  addTransactionWithInstallments(txData, count) {
-    const totalAmount = parseFloat(txData.amount) || 0;
-    const countInt = Math.max(1, parseInt(count) || 1);
-    const installmentValue = parseFloat((totalAmount / countInt).toFixed(2));
-    const baseDate = txData.date || new Date().toISOString().split('T')[0];
-    const initialStatus = txData.status || 'paid';
-    const createdTxs = [];
-
-    for (let i = 0; i < countInt; i++) {
-      const [y, m, d] = baseDate.split('-').map(Number);
-      const instDate = new Date(y, m - 1 + i, d, 12, 0, 0);
-      const instDateStr = `${instDate.getFullYear()}-${String(instDate.getMonth() + 1).padStart(2, '0')}-${String(instDate.getDate()).padStart(2, '0')}`;
-
-      const tx = {
-        id: `tx-${Date.now()}-${i}`,
-        title: `${txData.title} (${i + 1}/${countInt})`,
-        type: txData.type,
-        scope: txData.scope || 'business',
-        amount: i === countInt - 1 ? parseFloat((totalAmount - (installmentValue * (countInt - 1))).toFixed(2)) : installmentValue,
-        date: instDateStr,
-        dueDate: instDateStr,
-        status: i === 0 ? initialStatus : 'pending',
-        category: txData.category,
-        paymentMethod: txData.paymentMethod || 'Pix',
-        clientId: txData.clientId || null,
-        clientName: txData.clientName || null,
-        projectId: txData.projectId || null,
-        notes: txData.notes || '',
-        installmentNumber: i + 1,
-        totalInstallments: countInt
-      };
-
-      if (tx.status === 'paid' && tx.type === 'income' && tx.clientId) {
-        const client = this.state.clients.find(c => c.id === tx.clientId);
-        if (client) {
-          client.totalGenerated = (client.totalGenerated || 0) + tx.amount;
-        }
+  updateInstallmentStatus(txId, newStatus, paidDate = null) {
+    const tx = this.state.transactions.find(t => t.id === txId);
+    if (!tx) return null;
+    const oldStatus = tx.status;
+    tx.status = newStatus;
+    if (newStatus === 'paid') {
+      tx.paidAt = paidDate || new Date().toISOString().split('T')[0];
+      if (oldStatus !== 'paid') {
+        this.addXP(30, `Parcela ${tx.title} baixada no caixa`);
       }
+    } else {
+      tx.paidAt = null;
+    }
 
-      this.state.transactions.unshift(tx);
-      createdTxs.push(tx);
+    if (tx.clientId) {
+      this.recalculateClientLtv(tx.clientId);
     }
 
     this.saveState();
-    return createdTxs;
+    return tx;
+  }
+
+  addInstallmentIncomeGroup(data) {
+    const totalAmount = parseFloat(data.totalAmount) || 0;
+    const downPayment = parseFloat(data.downPayment) || 0;
+    const installmentsCount = Math.max(1, parseInt(data.installmentsCount) || 1);
+    const scope = data.scope || 'business';
+    const title = data.title || 'Receita Parcelada';
+    const category = data.category || 'Serviços & Projetos';
+    const paymentMethod = data.paymentMethod || 'Pix';
+    const clientId = data.clientId || null;
+    const clientName = data.clientName || null;
+    const projectId = data.projectId || null;
+    const proposalId = data.proposalId || null;
+    const serviceId = data.serviceId || null;
+    const notes = data.notes || '';
+    const downPaymentDate = data.downPaymentDate || new Date().toISOString().split('T')[0];
+    const downPaymentStatus = data.downPaymentStatus || 'paid';
+    const interval = data.interval || 'mensal';
+    const firstDueDate = data.firstDueDate || new Date().toISOString().split('T')[0];
+    const customList = Array.isArray(data.installmentsList) ? data.installmentsList : null;
+
+    const groupId = 'inst_grp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const createdTxs = [];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // 1. Entrada (Down Payment) se houver
+    if (downPayment > 0) {
+      const isPaid = downPaymentStatus === 'paid';
+      const entryTx = {
+        id: `tx-inst-${Date.now()}-entry`,
+        installmentGroupId: groupId,
+        isInstallment: true,
+        parentTitle: title,
+        title: `Entrada — ${title}`,
+        type: 'income',
+        scope,
+        amount: downPayment,
+        totalAmount: totalAmount,
+        installmentIndex: 0,
+        totalInstallments: installmentsCount,
+        installmentLabel: 'Entrada',
+        hasDownPayment: true,
+        downPaymentAmount: downPayment,
+        date: downPaymentDate,
+        dueDate: downPaymentDate,
+        status: isPaid ? 'paid' : (downPaymentDate < todayStr ? 'overdue' : 'pending'),
+        paidAt: isPaid ? downPaymentDate : null,
+        category,
+        paymentMethod,
+        clientId,
+        clientName,
+        projectId,
+        proposalId,
+        serviceId,
+        notes
+      };
+      this.state.transactions.unshift(entryTx);
+      createdTxs.push(entryTx);
+    }
+
+    // 2. Parcelas
+    const remainingAmount = Math.max(0, totalAmount - downPayment);
+    const defaultInstValue = parseFloat((remainingAmount / installmentsCount).toFixed(2));
+
+    for (let i = 0; i < installmentsCount; i++) {
+      let instDueDate = '';
+      let instAmount = defaultInstValue;
+      let instStatus = 'pending';
+
+      if (customList && customList[i]) {
+        instDueDate = customList[i].dueDate || customList[i].date;
+        instAmount = parseFloat(customList[i].amount) || defaultInstValue;
+        instStatus = customList[i].status || 'pending';
+      } else {
+        // Cálculo automático de datas baseado no intervalo
+        const [y, m, d] = firstDueDate.split('-').map(Number);
+        const dt = new Date(y, m - 1, d, 12, 0, 0);
+        if (interval === 'semanal') {
+          dt.setDate(dt.getDate() + (i * 7));
+        } else if (interval === 'quinzenal') {
+          dt.setDate(dt.getDate() + (i * 15));
+        } else {
+          // mensal padrão
+          dt.setMonth(dt.getMonth() + i);
+        }
+        instDueDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        
+        // Ajuste de centavos na última parcela se for cálculo automático
+        if (i === installmentsCount - 1 && !customList) {
+          const sumBefore = defaultInstValue * (installmentsCount - 1);
+          instAmount = parseFloat((remainingAmount - sumBefore).toFixed(2));
+        }
+      }
+
+      if (!instDueDate) instDueDate = firstDueDate;
+      if (instStatus === 'pending' && instDueDate < todayStr) {
+        instStatus = 'overdue';
+      }
+
+      const instTx = {
+        id: `tx-inst-${Date.now()}-${i + 1}`,
+        installmentGroupId: groupId,
+        isInstallment: true,
+        parentTitle: title,
+        title: `Parcela ${i + 1}/${installmentsCount} — ${title}`,
+        type: 'income',
+        scope,
+        amount: instAmount,
+        totalAmount: totalAmount,
+        installmentIndex: i + 1,
+        totalInstallments: installmentsCount,
+        installmentLabel: `Parcela ${i + 1}/${installmentsCount}`,
+        hasDownPayment: downPayment > 0,
+        downPaymentAmount: downPayment,
+        date: instDueDate,
+        dueDate: instDueDate,
+        status: instStatus,
+        paidAt: instStatus === 'paid' ? instDueDate : null,
+        category,
+        paymentMethod,
+        clientId,
+        clientName,
+        projectId,
+        proposalId,
+        serviceId,
+        notes
+      };
+
+      this.state.transactions.unshift(instTx);
+      createdTxs.push(instTx);
+    }
+
+    // Atualiza LTV se houver entrada ou parcelas pagas
+    if (clientId) {
+      this.recalculateClientLtv(clientId);
+    }
+
+    // Se vinculado a projeto, atualiza paymentCondition no projeto
+    if (projectId) {
+      const proj = this.state.projects.find(p => p.id === projectId);
+      if (proj) {
+        proj.paymentCondition = {
+          type: downPayment > 0 ? 'entrada_parcelas' : 'parcelamento',
+          label: downPayment > 0 ? `Entrada de ${downPayment.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} + ${installmentsCount} parcelas` : `${installmentsCount} parcelas`,
+          downPaymentAmount: downPayment,
+          downPaymentDate: downPaymentDate,
+          installmentsCount: installmentsCount,
+          interval: interval,
+          totalAmount: totalAmount
+        };
+      }
+    }
+
+    this.saveState();
+    return { groupId, transactions: createdTxs };
+  }
+
+  deleteInstallmentGroup(groupId) {
+    const txsInGroup = this.state.transactions.filter(t => t.installmentGroupId === groupId);
+    const clientId = txsInGroup[0]?.clientId;
+    this.state.transactions = this.state.transactions.filter(t => t.installmentGroupId !== groupId);
+    if (clientId) {
+      this.recalculateClientLtv(clientId);
+    }
+    this.saveState();
+  }
+
+  addTransactionWithInstallments(txData, count) {
+    return this.addInstallmentIncomeGroup({
+      ...txData,
+      totalAmount: txData.amount,
+      downPayment: 0,
+      installmentsCount: count,
+      firstDueDate: txData.date || new Date().toISOString().split('T')[0]
+    }).transactions;
   }
 
   // --- RECORRÊNCIAS FINANCEIRAS REAIS (V2.2) ---
@@ -1156,13 +1385,21 @@ class Store {
   updateTransaction(id, updates) {
     const idx = this.state.transactions.findIndex(t => t.id === id);
     if (idx !== -1) {
+      const oldClientId = this.state.transactions[idx].clientId;
       this.state.transactions[idx] = { ...this.state.transactions[idx], ...updates };
+      if (oldClientId) this.recalculateClientLtv(oldClientId);
+      if (updates.clientId && updates.clientId !== oldClientId) this.recalculateClientLtv(updates.clientId);
       this.saveState();
     }
   }
 
   deleteTransaction(id) {
+    const tx = this.state.transactions.find(t => t.id === id);
+    const clientId = tx?.clientId;
     this.state.transactions = this.state.transactions.filter(t => t.id !== id);
+    if (clientId) {
+      this.recalculateClientLtv(clientId);
+    }
     this.saveState();
   }
 
@@ -1716,10 +1953,10 @@ class Store {
     const profit = totalIncome - totalExpense;
 
     const receivable = txs
-      .filter(t => t.type === 'income' && t.status !== 'paid')
+      .filter(t => t.type === 'income' && t.status !== 'paid' && t.status !== 'cancelled')
       .reduce((acc, t) => acc + (t.amount || 0), 0);
     const payable = txs
-      .filter(t => t.type === 'expense' && t.status !== 'paid')
+      .filter(t => t.type === 'expense' && t.status !== 'paid' && t.status !== 'cancelled')
       .reduce((acc, t) => acc + (t.amount || 0), 0);
 
     const leads = this.state.leads || [];

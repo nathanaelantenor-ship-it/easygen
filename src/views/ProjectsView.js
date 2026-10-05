@@ -3,6 +3,7 @@ import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
 import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
+import { getInstallmentStatusBadge, openEditTransactionModal, openTransactionModal } from './FinanceView.js';
 
 let projectViewMode = 'kanban'; // kanban | list
 
@@ -760,56 +761,120 @@ export function openProjectDetailsModal(projectId, onRefresh, onNavigate) {
   }
 
   function renderFinance() {
+    const liveState = store.getState();
+    const liveProj = liveState.projects.find(p => p.id === proj.id) || proj;
+    const liveTxs = liveState.transactions.filter(t => t.projectId === proj.id || (t.clientId === proj.clientId && t.isInstallment && t.title.toLowerCase().includes(proj.title.toLowerCase())));
+    const validIncomes = liveTxs.filter(t => t.type === 'income' && t.status !== 'cancelled');
+
+    const projPaid = validIncomes.filter(t => t.status === 'paid').reduce((acc, t) => acc + (t.amount || 0), 0);
+    const projPending = validIncomes.filter(t => t.status === 'pending' || t.status === 'overdue').reduce((acc, t) => acc + (t.amount || 0), 0);
+    const projTotal = (proj.value || 0) > 0 ? proj.value : (projPaid + projPending);
+
+    // Condição acordada
+    let agreedCondition = liveProj.paymentCondition;
+    if (!agreedCondition) {
+      const instList = validIncomes.filter(t => t.isInstallment);
+      const hasDown = instList.some(t => t.installmentNumber === 0 || (t.title && t.title.toLowerCase().includes('entrada')));
+      const instCount = instList.filter(t => t.installmentNumber > 0).length;
+      if (hasDown && instCount > 0) {
+        agreedCondition = `Entrada + ${instCount} parcelas`;
+      } else if (instCount > 0) {
+        agreedCondition = `${instCount} parcelas`;
+      } else if (validIncomes.some(t => t.isRecurring)) {
+        agreedCondition = 'Recorrente';
+      } else {
+        agreedCondition = 'Pagamento Único';
+      }
+    }
+
     tabContainer.innerHTML = `
-      <div class="space-y-3">
+      <div class="space-y-4">
+        <!-- Header & Action -->
         <div class="flex items-center justify-between">
-          <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">Financeiro do Projeto (${projectTransactions.length} lançamentos)</span>
-          <button id="add-proj-tx-btn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors">
-            + Lançar Parcela / Receita
+          <div>
+            <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider block">Financeiro do Projeto</span>
+            <span class="text-[11px] text-zinc-400">Condições contratuais, parcelas e controle de recebimentos</span>
+          </div>
+          <button id="add-proj-tx-btn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 shadow-2xs">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span>+ Lançar Parcela / Receita</span>
           </button>
         </div>
 
-        <div class="grid grid-cols-3 gap-2">
-          <div class="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800 rounded-xl">
-            <span class="text-[10px] text-zinc-400 font-medium">Contratado</span>
-            <div class="text-xs font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">${formatCurrency(proj.value)}</div>
+        <!-- 4 KPI Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-800 rounded-xl">
+            <span class="text-[10px] text-zinc-400 font-semibold uppercase block">Valor Total</span>
+            <div class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">${formatCurrency(projTotal)}</div>
           </div>
           <div class="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-xl">
-            <span class="text-[10px] text-emerald-800 dark:text-emerald-300 font-medium">Recebido</span>
-            <div class="text-xs font-bold text-emerald-600 mt-0.5">${formatCurrency(totalPaid)}</div>
+            <span class="text-[10px] text-emerald-800 dark:text-emerald-300 font-semibold uppercase block">Já Recebido</span>
+            <div class="text-xs sm:text-sm font-bold text-emerald-600 mt-0.5">${formatCurrency(projPaid)}</div>
           </div>
           <div class="p-2.5 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl">
-            <span class="text-[10px] text-amber-800 dark:text-amber-300 font-medium">A Receber</span>
-            <div class="text-xs font-bold text-amber-600 mt-0.5">${formatCurrency(totalPending)}</div>
+            <span class="text-[10px] text-amber-800 dark:text-amber-300 font-semibold uppercase block">Pendente</span>
+            <div class="text-xs sm:text-sm font-bold text-amber-600 mt-0.5">${formatCurrency(projPending)}</div>
+          </div>
+          <div class="p-2.5 bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 rounded-xl">
+            <span class="text-[10px] text-purple-800 dark:text-purple-300 font-semibold uppercase block">Condição Acordada</span>
+            <div class="text-xs font-bold text-purple-700 dark:text-purple-300 mt-0.5 truncate" title="${agreedCondition}">${agreedCondition}</div>
           </div>
         </div>
 
+        <!-- Lista das Parcelas do Projeto -->
         <div class="space-y-2 pt-1">
-          ${projectTransactions.length === 0 ? `
-            <div class="p-5 text-center bg-zinc-50 dark:bg-zinc-800/20 rounded-xl text-xs text-zinc-400">
-              Nenhuma receita ou parcela vinculada a este projeto ainda.
+          <span class="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider block">Lista de Parcelas & Vencimentos (${validIncomes.length})</span>
+          ${validIncomes.length === 0 ? `
+            <div class="p-5 text-center bg-zinc-50 dark:bg-zinc-800/20 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800 text-xs text-zinc-400">
+              Nenhuma receita ou parcela vinculada a este projeto ainda. Use o botão acima para lançar parcelas.
             </div>
-          ` : projectTransactions.map(t => `
-            <div class="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-3">
-              <div>
-                <div class="font-semibold text-zinc-900 dark:text-zinc-100 text-xs">${t.title}</div>
-                <div class="text-[11px] text-zinc-400 mt-0.5">Vencimento: ${formatDate(t.dueDate || t.date)} • ${t.paymentMethod || 'PIX'}</div>
-              </div>
-              <div class="flex items-center gap-2.5">
-                <div class="text-right">
-                  <div class="font-bold text-emerald-600 text-xs">${formatCurrency(t.amount)}</div>
-                  <span class="text-[10px] font-medium capitalize ${t.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'}">
-                    ${t.status === 'paid' ? 'Pago' : 'Pendente'}
-                  </span>
-                </div>
-                ${t.status === 'pending' ? `
-                  <button class="mark-proj-paid-btn px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-semibold transition-colors" data-id="${t.id}">
-                    Baixar
-                  </button>
-                ` : ''}
-              </div>
+          ` : `
+            <div class="divide-y divide-zinc-100 dark:divide-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-850 shadow-2xs">
+              ${validIncomes.map(t => {
+                const isDown = t.installmentNumber === 0 || (t.title && t.title.toLowerCase().includes('entrada'));
+                const label = isDown ? 'Entrada / Sinal' : (t.installmentNumber ? `Parcela ${t.installmentNumber}/${t.installmentTotal || validIncomes.length}` : t.title);
+
+                return `
+                  <div class="p-3 flex items-center justify-between gap-3 text-xs hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40 transition-colors">
+                    <div class="flex items-center gap-2.5">
+                      <span class="w-6 h-6 rounded-lg ${isDown ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'} font-bold text-[10px] flex items-center justify-center shrink-0">
+                        ${isDown ? 'ENT' : (t.installmentNumber || 'REC')}
+                      </span>
+                      <div>
+                        <div class="font-semibold text-zinc-900 dark:text-zinc-100">${label}</div>
+                        <div class="text-[10px] text-zinc-400 mt-0.5">Vencimento: <b class="text-zinc-600 dark:text-zinc-300">${formatDate(t.dueDate || t.date)}</b> • ${t.paymentMethod || 'PIX'}</div>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 shrink-0">
+                      <div class="text-right">
+                        <div class="font-bold text-zinc-900 dark:text-zinc-100 text-xs">${formatCurrency(t.amount)}</div>
+                        <div class="mt-0.5">${getInstallmentStatusBadge(t.installmentStatus || t.status, t.dueDate)}</div>
+                      </div>
+
+                      <div class="flex items-center gap-1">
+                        ${t.receiptUrl ? `
+                          <a href="${t.receiptUrl}" target="_blank" class="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg" title="Comprovante">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                          </a>
+                        ` : ''}
+
+                        ${t.status !== 'paid' ? `
+                          <button class="mark-proj-paid-btn px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-semibold transition-colors shadow-2xs" data-id="${t.id}" title="Dar baixa nesta parcela">
+                            Baixar
+                          </button>
+                        ` : ''}
+
+                        <button class="edit-proj-tx-btn p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors" data-id="${t.id}" title="Editar Parcela">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
             </div>
-          `).join('')}
+          `}
         </div>
       </div>
     `;
@@ -818,10 +883,21 @@ export function openProjectDetailsModal(projectId, onRefresh, onNavigate) {
     tabContainer.querySelectorAll('.mark-proj-paid-btn').forEach(btn => {
       btn.onclick = () => {
         const id = btn.getAttribute('data-id');
-        store.markTransactionAsPaid(id);
-        toast.success('Parcela baixada com sucesso!');
+        store.updateInstallmentStatus(id, 'Recebida');
+        toast.success('Parcela baixada com sucesso! Projeto, Cliente e Fluxo de Caixa atualizados.');
         renderFinance();
         if (onRefresh) onRefresh();
+      };
+    });
+
+    // Edit tx handler
+    tabContainer.querySelectorAll('.edit-proj-tx-btn').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.getAttribute('data-id');
+        openEditTransactionModal(id, () => {
+          renderFinance();
+          if (onRefresh) onRefresh();
+        });
       };
     });
 
@@ -1095,73 +1171,9 @@ function openCreateDeliveryForProjectModal(proj, onSuccess) {
 }
 
 function openCreateTransactionForProjectModal(proj, onSuccess) {
-  const content = `
-    <form id="proj-create-tx-form" class="space-y-3">
-      <div>
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Descrição do Lançamento *</label>
-        <input required name="title" value="Parcela - ${proj.title}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Valor (R$)</label>
-          <input required type="number" step="0.01" name="amount" value="${proj.value ? Math.round(proj.value / 2) : 1500}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Vencimento</label>
-          <input required type="date" name="dueDate" value="${new Date().toISOString().split('T')[0]}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Forma de Pagamento</label>
-          <select name="paymentMethod" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-            <option value="PIX" selected>PIX</option>
-            <option value="Boleto">Boleto</option>
-            <option value="Cartão">Cartão</option>
-            <option value="Transferência">TED / Transferência</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Status</label>
-          <select name="status" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-            <option value="pending" selected>Pendente (A Receber)</option>
-            <option value="paid">Já Pago (Baixado)</option>
-          </select>
-        </div>
-      </div>
-      <div class="pt-2 flex justify-end gap-2">
-        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors">Lançar no Financeiro</button>
-      </div>
-    </form>
-  `;
-
-  const m = modal.open({
-    title: `Receita para ${proj.title}`,
-    content,
-    size: 'md'
-  });
-
-  m.panel.querySelector('#proj-create-tx-form').onsubmit = (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    store.addTransaction({
-      title: fd.get('title'),
-      type: 'income',
-      amount: parseFloat(fd.get('amount')) || 0,
-      dueDate: fd.get('dueDate'),
-      date: fd.get('dueDate'),
-      paymentMethod: fd.get('paymentMethod'),
-      status: fd.get('status'),
-      category: 'Projetos',
-      scope: 'business',
-      projectId: proj.id,
-      clientId: proj.clientId,
-      clientName: proj.clientName
-    });
-    toast.success('Receita do projeto lançada com sucesso!');
-    m.close();
+  openTransactionModal('income', 'business', () => {
     if (onSuccess) onSuccess();
-  };
+  }, { clientId: proj.clientId, projectId: proj.id, amount: proj.value, title: `Projeto - ${proj.title}` });
 }
 
 function openAddDocumentForProjectModal(proj, onSuccess) {

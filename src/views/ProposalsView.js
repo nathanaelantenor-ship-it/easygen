@@ -254,9 +254,18 @@ export function openProposalDetailsModal(propId, onNavigate, onRefresh) {
         </div>
 
         <!-- Payment Terms & Timeline -->
-        <div class="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl space-y-1 text-[11px]">
+        <div class="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl space-y-1.5 text-[11px]">
           <div><b>Prazo Estimado:</b> ${prop.deadline}</div>
-          <div><b>Condições de Pagamento:</b> ${prop.paymentTerms || 'A combinar'}</div>
+          <div><b>Condições de Pagamento:</b> <span class="font-bold text-blue-600 dark:text-blue-400">${prop.paymentTerms || prop.paymentCondition || 'Pagamento único'}</span></div>
+          ${prop.downPayment > 0 ? `
+            <div class="text-[10px] text-zinc-500">
+              <b>Estrutura Financeira:</b> Entrada de ${formatCurrency(prop.downPayment)} + ${prop.installmentsCount || 2} parcelas de ${formatCurrency(((prop.finalValue || prop.value) - prop.downPayment) / (prop.installmentsCount || 2))}
+            </div>
+          ` : (prop.installmentsCount > 1 ? `
+            <div class="text-[10px] text-zinc-500">
+              <b>Estrutura Financeira:</b> ${prop.installmentsCount} parcelas de ${formatCurrency((prop.finalValue || prop.value) / prop.installmentsCount)}
+            </div>
+          ` : '')}
           <div><b>Observações:</b> ${prop.notes || 'Início após aprovação formal.'}</div>
         </div>
       </div>
@@ -369,12 +378,12 @@ function openCreateProposalModal(onSuccess) {
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Cliente *</label>
           <select required name="clientId" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
             <option value="">Selecione um cliente...</option>
-            ${clients.map(c => `<option value="${c.id}">${c.name} (${c.company})</option>`).join('')}
+            ${clients.map(c => `<option value="${c.id}">${c.name} (${c.company || 'PF'})</option>`).join('')}
           </select>
         </div>
         <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Serviço *</label>
-          <select required name="serviceId" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Serviço Base *</label>
+          <select required name="serviceId" id="prop-service-select" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
             <option value="">Selecione o serviço base...</option>
             ${services.map(s => `<option value="${s.id}">${s.name} - ${formatCurrency(s.price)}</option>`).join('')}
           </select>
@@ -383,30 +392,77 @@ function openCreateProposalModal(onSuccess) {
       <div class="grid grid-cols-2 gap-2">
         <div>
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Valor do Investimento (R$) *</label>
-          <input required type="number" name="value" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="4500">
+          <input required type="number" step="0.01" name="value" id="prop-input-value" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="4500">
         </div>
         <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Desconto Especial (R$)</label>
-          <input type="number" name="discount" value="0" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Desconto Comercial (R$)</label>
+          <input type="number" step="0.01" name="discount" value="0" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div>
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Prazo de Entrega</label>
-          <input name="deadline" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Ex: 20 dias">
+          <input name="deadline" id="prop-input-deadline" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Ex: 20 dias">
         </div>
         <div>
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Validade</label>
           <input type="date" name="validity" value="${new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
         </div>
       </div>
-      <div>
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Condições de Pagamento</label>
-        <input name="paymentTerms" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Ex: 50% entrada + 50% entrega">
+
+      <!-- SEÇÃO DE CONDIÇÃO DE PAGAMENTO NA PROPOSTA -->
+      <div class="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-zinc-700/80 space-y-2.5">
+        <div>
+          <label class="block text-xs font-semibold text-zinc-700 dark:text-zinc-200 mb-1">Condição de Pagamento *</label>
+          <select name="propConditionType" id="prop-cond-type" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-medium">
+            <option value="pagamento_unico" selected>Pagamento único (à vista)</option>
+            <option value="entrada_parcelas">Entrada + parcelas</option>
+            <option value="parcelamento_sem_entrada">Parcelamento sem entrada</option>
+            <option value="recorrente">Recorrente (mensal, trimestral...)</option>
+            <option value="personalizada">Condição personalizada</option>
+          </select>
+        </div>
+
+        <div id="prop-box-entrada" class="hidden grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-medium text-zinc-500">Valor da Entrada (R$)</label>
+            <input type="number" step="0.01" name="propDownPayment" id="prop-down-payment" placeholder="Ex: 1000" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          </div>
+          <div>
+            <label class="block text-[11px] font-medium text-zinc-500">Qtd Parcelas Restantes</label>
+            <input type="number" min="1" max="60" name="propInstallmentsCount" id="prop-inst-count" value="2" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          </div>
+        </div>
+
+        <div id="prop-box-sem-entrada" class="hidden">
+          <label class="block text-[11px] font-medium text-zinc-500">Quantidade de Parcelas</label>
+          <input type="number" min="2" max="60" name="propInstallmentsCountNoDown" id="prop-inst-no-down" value="2" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+        </div>
+
+        <div id="prop-box-recorrente" class="hidden">
+          <label class="block text-[11px] font-medium text-zinc-500">Frequência Recorrente</label>
+          <select name="propFrequency" id="prop-frequency" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+            <option value="mensal" selected>Mensal</option>
+            <option value="trimestral">Trimestral</option>
+            <option value="semestral">Semestral</option>
+            <option value="anual">Anual</option>
+          </select>
+        </div>
+
+        <div id="prop-box-personalizada" class="hidden">
+          <label class="block text-[11px] font-medium text-zinc-500">Descrição Personalizada</label>
+          <input name="propCustomCondition" id="prop-custom" placeholder="Ex: 50% no início e 50% na aprovação final" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-medium text-zinc-500">Condições de Pagamento Descritas *</label>
+          <input name="paymentTerms" id="prop-payment-terms" value="Pagamento único à vista" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+        </div>
       </div>
+
       <div>
         <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Observações do Escopo</label>
-        <textarea name="description" rows="2" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Detalhes dos entregáveis e cronograma..."></textarea>
+        <textarea name="description" id="prop-input-desc" rows="2" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Detalhes dos entregáveis e cronograma..."></textarea>
       </div>
       <div class="pt-2 flex justify-end gap-2">
         <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors">Criar Proposta</button>
@@ -420,7 +476,82 @@ function openCreateProposalModal(onSuccess) {
     size: 'md'
   });
 
-  m.panel.querySelector('#prop-manual-create-form').onsubmit = (e) => {
+  const form = m.panel.querySelector('#prop-manual-create-form');
+  const serviceSelect = form.querySelector('#prop-service-select');
+  const valueInput = form.querySelector('#prop-input-value');
+  const deadlineInput = form.querySelector('#prop-input-deadline');
+  const descInput = form.querySelector('#prop-input-desc');
+
+  const selectType = form.querySelector('#prop-cond-type');
+  const boxEntrada = form.querySelector('#prop-box-entrada');
+  const boxSemEntrada = form.querySelector('#prop-box-sem-entrada');
+  const boxRecorrente = form.querySelector('#prop-box-recorrente');
+  const boxPersonalizada = form.querySelector('#prop-box-personalizada');
+  const paymentTermsInput = form.querySelector('#prop-payment-terms');
+  const downInput = form.querySelector('#prop-down-payment');
+  const countInput = form.querySelector('#prop-inst-count');
+  const noDownCountInput = form.querySelector('#prop-inst-no-down');
+  const freqSelect = form.querySelector('#prop-frequency');
+  const customInput = form.querySelector('#prop-custom');
+
+  function updateTerms() {
+    const val = selectType.value;
+    boxEntrada.classList.toggle('hidden', val !== 'entrada_parcelas');
+    boxSemEntrada.classList.toggle('hidden', val !== 'parcelamento_sem_entrada');
+    boxRecorrente.classList.toggle('hidden', val !== 'recorrente');
+    boxPersonalizada.classList.toggle('hidden', val !== 'personalizada');
+
+    if (val === 'pagamento_unico') {
+      paymentTermsInput.value = 'Pagamento único à vista';
+    } else if (val === 'entrada_parcelas') {
+      const down = downInput.value ? `Entrada de R$ ${downInput.value}` : 'Entrada';
+      const c = countInput.value || '2';
+      paymentTermsInput.value = `${down} + ${c} parcelas`;
+    } else if (val === 'parcelamento_sem_entrada') {
+      const c = noDownCountInput.value || '2';
+      paymentTermsInput.value = `${c} parcelas sem entrada`;
+    } else if (val === 'recorrente') {
+      paymentTermsInput.value = `Recorrente ${freqSelect.value}`;
+    } else if (val === 'personalizada') {
+      paymentTermsInput.value = customInput.value || 'Condição personalizada';
+    }
+  }
+
+  selectType.onchange = updateTerms;
+  downInput.oninput = updateTerms;
+  countInput.oninput = updateTerms;
+  noDownCountInput.oninput = updateTerms;
+  freqSelect.onchange = updateTerms;
+  customInput.oninput = updateTerms;
+
+  serviceSelect.onchange = () => {
+    const srv = services.find(s => s.id === serviceSelect.value);
+    if (srv) {
+      if (valueInput) valueInput.value = srv.price || 0;
+      if (deadlineInput) deadlineInput.value = srv.timeline || '';
+      if (descInput) descInput.value = srv.description || '';
+
+      if (srv.paymentConditionType) {
+        selectType.value = srv.paymentConditionType;
+      }
+      if (srv.defaultDownPayment !== undefined) {
+        downInput.value = srv.defaultDownPayment;
+      }
+      if (srv.defaultInstallmentsCount) {
+        countInput.value = srv.defaultInstallmentsCount;
+        noDownCountInput.value = srv.defaultInstallmentsCount;
+      }
+      if (srv.defaultFrequency) {
+        freqSelect.value = srv.defaultFrequency;
+      }
+      if (srv.paymentTerms) {
+        paymentTermsInput.value = srv.paymentTerms;
+      }
+      updateTerms();
+    }
+  };
+
+  form.onsubmit = (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const clientId = fd.get('clientId');
@@ -428,9 +559,15 @@ function openCreateProposalModal(onSuccess) {
     const client = clients.find(c => c.id === clientId);
     const service = services.find(s => s.id === serviceId);
 
+    const condType = fd.get('propConditionType') || 'pagamento_unico';
+    const downPayment = condType === 'entrada_parcelas' ? (parseFloat(fd.get('propDownPayment')) || 0) : 0;
+    const installmentsCount = condType === 'entrada_parcelas'
+      ? (parseInt(fd.get('propInstallmentsCount')) || 2)
+      : (condType === 'parcelamento_sem_entrada' ? (parseInt(fd.get('propInstallmentsCountNoDown')) || 2) : 1);
+
     const prop = store.addProposal({
       clientId: clientId || null,
-      clientName: client ? `${client.name} (${client.company})` : 'Cliente Direto',
+      clientName: client ? `${client.name} (${client.company || 'PF'})` : 'Cliente Direto',
       serviceId: serviceId || null,
       serviceName: service ? service.name : 'Serviço Sob Medida',
       value: parseFloat(fd.get('value')) || 0,
@@ -438,6 +575,11 @@ function openCreateProposalModal(onSuccess) {
       deadline: fd.get('deadline'),
       validity: fd.get('validity'),
       paymentTerms: fd.get('paymentTerms'),
+      paymentCondition: fd.get('paymentTerms'),
+      paymentConditionType: condType,
+      downPayment,
+      installmentsCount,
+      frequency: fd.get('propFrequency') || 'mensal',
       description: fd.get('description'),
       deliverables: service ? service.deliverables : [],
       status: 'enviada'

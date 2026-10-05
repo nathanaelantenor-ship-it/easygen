@@ -3,6 +3,7 @@ import { modal } from '../components/Modal.js';
 import { toast } from '../components/Toast.js';
 import { formatCurrency, formatDate, getStatusBadge } from '../utils/formatters.js';
 import { renderExportButtonHtml, bindExportButton } from '../components/ExportMenu.js';
+import { getInstallmentStatusBadge, openEditTransactionModal, openTransactionModal } from './FinanceView.js';
 
 let filterType = 'all';
 
@@ -543,77 +544,240 @@ export function openClientProfileModal(clientId, onNavigate, onRefreshList) {
   }
 
   function renderFinanceTab() {
+    const currentState = store.getState();
+    const currentClient = currentState.clients.find(c => c.id === client.id) || client;
+    const currentClientTxs = currentState.transactions.filter(t => t.clientId === client.id || (t.clientName && t.clientName.toLowerCase() === client.name.toLowerCase()));
+    const incomeTxs = currentClientTxs.filter(t => t.type === 'income' && t.status !== 'cancelled');
+
+    const clientTotalPaid = incomeTxs.filter(t => t.status === 'paid').reduce((sum, t) => sum + (t.amount || 0), 0);
+    const clientTotalPending = incomeTxs.filter(t => t.status === 'pending' || t.status === 'overdue').reduce((sum, t) => sum + (t.amount || 0), 0);
+    const clientTotalContracted = clientTotalPaid + clientTotalPending;
+
+    // Commercial conditions detection
+    const installmentTxs = currentClientTxs.filter(t => t.isInstallment && t.status !== 'cancelled');
+    const hasRecurring = currentClientTxs.some(t => t.isRecurring && t.status !== 'cancelled');
+    let conditionSummary = 'À vista / Pontual';
+    if (installmentTxs.length > 0 && hasRecurring) conditionSummary = 'Parcelado & Recorrente';
+    else if (installmentTxs.length > 0) conditionSummary = 'Parcelado';
+    else if (hasRecurring || currentClient.clientType === 'mensal') conditionSummary = 'Recorrente Mensal';
+
+    // Group installments by installmentGroupId
+    const installmentGroups = {};
+    installmentTxs.forEach(t => {
+      const gid = t.installmentGroupId || 'group-single';
+      if (!installmentGroups[gid]) installmentGroups[gid] = [];
+      installmentGroups[gid].push(t);
+    });
+
+    const groupKeys = Object.keys(installmentGroups);
+
     tabContainer.innerHTML = `
-      <div class="space-y-3">
+      <div class="space-y-4">
+        <!-- Header & Action -->
         <div class="flex items-center justify-between">
-          <span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Histórico Financeiro (${clientTransactions.length})</span>
-          <button id="tab-add-tx-btn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors">
-            + Lançar Receita
+          <div>
+            <h4 class="text-xs font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Condições de Pagamento & Financeiro</h4>
+            <p class="text-[11px] text-zinc-400">Contratos, parcelamentos e baixas vinculadas a ${client.name}</p>
+          </div>
+          <button id="tab-add-tx-btn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 shadow-2xs">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span>+ Nova Receita</span>
           </button>
         </div>
 
-        <!-- Mini Financial Badges -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <div class="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-xl">
-            <span class="text-[10px] text-emerald-800 dark:text-emerald-300 font-medium">Total Pago / Baixado</span>
-            <div class="text-sm font-bold text-emerald-600 mt-0.5">${formatCurrency(totalPaid)}</div>
+        <!-- 4 Badges de Condição Comercial & Saldo -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div class="p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-800 rounded-xl">
+            <span class="text-[10px] text-zinc-400 font-semibold uppercase block">Total Contratado</span>
+            <div class="text-sm font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">${formatCurrency(clientTotalContracted)}</div>
+            <div class="text-[10px] text-zinc-400 mt-0.5">${incomeTxs.length} lançamentos</div>
           </div>
-          <div class="p-2.5 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl">
-            <span class="text-[10px] text-amber-800 dark:text-amber-300 font-medium">A Receber / Pendente</span>
-            <div class="text-sm font-bold text-amber-600 mt-0.5">${formatCurrency(totalPending)}</div>
+          <div class="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-xl">
+            <span class="text-[10px] text-emerald-800 dark:text-emerald-300 font-semibold uppercase block">Total Já Recebido</span>
+            <div class="text-sm font-bold text-emerald-600 mt-0.5">${formatCurrency(clientTotalPaid)}</div>
+            <div class="text-[10px] text-emerald-600 mt-0.5">LTV: ${formatCurrency(currentClient.totalGenerated || clientTotalPaid)}</div>
           </div>
-          <div class="p-2.5 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-xl">
-            <span class="text-[10px] text-blue-800 dark:text-blue-300 font-medium">Total Faturado</span>
-            <div class="text-sm font-bold text-blue-600 mt-0.5">${formatCurrency(client.totalGenerated || (totalPaid + totalPending))}</div>
+          <div class="p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl">
+            <span class="text-[10px] text-amber-800 dark:text-amber-300 font-semibold uppercase block">Saldo Devedor (Pendente)</span>
+            <div class="text-sm font-bold text-amber-600 mt-0.5">${formatCurrency(clientTotalPending)}</div>
+            <div class="text-[10px] text-amber-600 mt-0.5">A vencer / atrasado</div>
+          </div>
+          <div class="p-3 bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 rounded-xl">
+            <span class="text-[10px] text-purple-800 dark:text-purple-300 font-semibold uppercase block">Condição Comercial</span>
+            <div class="text-xs font-bold text-purple-700 dark:text-purple-300 mt-0.5 truncate">${conditionSummary}</div>
+            <div class="text-[10px] text-purple-600 dark:text-purple-400 mt-0.5">${installmentTxs.length > 0 ? `${installmentTxs.length} parcelas ativas` : 'Sem parcelamento'}</div>
           </div>
         </div>
 
-        ${clientTransactions.length === 0 ? `
-          <div class="p-6 text-center bg-zinc-50 dark:bg-zinc-850 rounded-2xl border border-zinc-200 dark:border-zinc-800">
-            <p class="text-zinc-400 text-xs">Nenhum lançamento financeiro registrado para este cliente.</p>
+        <!-- Seção: CONDIÇÕES DE PAGAMENTO (PARCELAMENTOS) -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">Cronograma de Parcelas & Vencimentos</span>
+            <span class="text-[11px] text-zinc-400">${groupKeys.length} parcelamento(s) ativo(s)</span>
           </div>
-        ` : `
-          <div class="space-y-2">
-            ${clientTransactions.map(t => `
-              <div class="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-3">
-                <div>
-                  <div class="font-semibold text-zinc-900 dark:text-zinc-100 text-xs">${t.title}</div>
-                  <div class="text-[11px] text-zinc-400 mt-0.5">
-                    Data: ${formatDate(t.date || t.dueDate)} • ${t.category} • ${t.paymentMethod || 'PIX'}
+
+          ${groupKeys.length === 0 ? `
+            <div class="p-4 bg-zinc-50 dark:bg-zinc-800/20 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800 text-center space-y-2">
+              <p class="text-xs text-zinc-500">Nenhum parcelamento ativo cadastrado para este cliente.</p>
+              <button id="btn-create-inst-quick" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors">
+                + Criar Receita Parcelada
+              </button>
+            </div>
+          ` : groupKeys.map(gid => {
+            const groupList = installmentGroups[gid].sort((a, b) => (a.installmentNumber || 0) - (b.installmentNumber || 0));
+            const groupTotal = groupList.reduce((acc, t) => acc + (t.amount || 0), 0);
+            const groupPaid = groupList.filter(t => t.status === 'paid').reduce((acc, t) => acc + (t.amount || 0), 0);
+            const groupPaidCount = groupList.filter(t => t.status === 'paid').length;
+            const rawTitle = groupList[0].parentTitle || groupList[0].title || '';
+            const openParen = String.fromCharCode(40);
+            const pIdx = rawTitle.indexOf(openParen);
+            const groupTitle = pIdx !== -1 ? rawTitle.substring(0, pIdx).trim() : rawTitle;
+            const pct = groupTotal > 0 ? Math.round((groupPaid / groupTotal) * 100) : 0;
+
+            return `
+              <div class="p-3.5 bg-white dark:bg-zinc-850 rounded-xl border border-zinc-200 dark:border-zinc-700/80 shadow-2xs space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100 block">${groupTitle}</span>
+                    <span class="text-[10px] text-zinc-400">Total do contrato: <b class="text-zinc-700 dark:text-zinc-300">${formatCurrency(groupTotal)}</b> • ${groupPaidCount}/${groupList.length} recebidas (${pct}%)</span>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-xs font-bold text-emerald-600 block">${formatCurrency(groupPaid)} recebido</span>
+                    <span class="text-[10px] text-amber-600">${formatCurrency(groupTotal - groupPaid)} pendente</span>
                   </div>
                 </div>
-                <div class="flex items-center gap-2.5 shrink-0">
-                  <div class="text-right">
-                    <div class="font-bold text-emerald-600 text-xs">${formatCurrency(t.amount)}</div>
-                    <span class="text-[10px] font-medium capitalize ${t.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'}">
-                      ${t.status === 'paid' ? 'Pago' : 'Pendente'}
-                    </span>
-                  </div>
-                  ${t.status === 'pending' ? `
-                    <button class="mark-paid-btn px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-semibold transition-colors" data-id="${t.id}">
-                      Baixar
-                    </button>
-                  ` : ''}
+
+                <div class="w-full bg-zinc-100 dark:bg-zinc-700 h-1.5 rounded-full overflow-hidden">
+                  <div class="bg-emerald-500 h-1.5 rounded-full transition-all" style="width: ${pct}%"></div>
+                </div>
+
+                <!-- Lista de Parcelas -->
+                <div class="divide-y divide-zinc-100 dark:divide-zinc-800 border-t border-zinc-100 dark:border-zinc-800 pt-2 space-y-1">
+                  ${groupList.map(t => {
+                    const isDownPayment = t.installmentNumber === 0 || (t.title && t.title.toLowerCase().includes('entrada'));
+                    const label = isDownPayment ? 'Entrada / Sinal' : `Parcela ${t.installmentNumber}/${t.installmentTotal || (groupList.length - (groupList.some(x => x.installmentNumber === 0) ? 1 : 0))}`;
+                    return `
+                      <div class="py-2 flex items-center justify-between gap-3 text-xs">
+                        <div class="flex items-center gap-2.5">
+                          <span class="w-6 h-6 rounded-lg ${isDownPayment ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'} font-bold text-[10px] flex items-center justify-center shrink-0">
+                            ${isDownPayment ? 'ENT' : t.installmentNumber}
+                          </span>
+                          <div>
+                            <div class="font-medium text-zinc-900 dark:text-zinc-100">${label}</div>
+                            <div class="text-[10px] text-zinc-400">Vencimento: <span class="font-semibold text-zinc-700 dark:text-zinc-300">${formatDate(t.dueDate || t.date)}</span></div>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center gap-3 shrink-0">
+                          <div class="text-right">
+                            <span class="font-bold text-zinc-900 dark:text-zinc-100 block">${formatCurrency(t.amount)}</span>
+                            <div class="mt-0.5">${getInstallmentStatusBadge(t.installmentStatus || t.status, t.dueDate)}</div>
+                          </div>
+
+                          <div class="flex items-center gap-1">
+                            ${t.receiptUrl ? `
+                              <a href="${t.receiptUrl}" target="_blank" class="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors" title="Visualizar Comprovante">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                              </a>
+                            ` : ''}
+
+                            ${t.status !== 'paid' ? `
+                              <button class="client-inst-pay-btn px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-semibold transition-colors shadow-2xs" data-id="${t.id}" title="Dar baixa nesta parcela">
+                                Baixar
+                              </button>
+                            ` : ''}
+
+                            <button class="client-inst-edit-btn p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors" data-id="${t.id}" title="Alterar Vencimento / Adicionar Observação">
+                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
                 </div>
               </div>
-            `).join('')}
-          </div>
-        `}
+            `;
+          }).join('')}
+        </div>
+
+        <!-- Seção: HISTÓRICO GERAL DE LANÇAMENTOS -->
+        <div class="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <span class="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">Histórico Geral de Lançamentos (${currentClientTxs.length})</span>
+          ${currentClientTxs.length === 0 ? `
+            <div class="p-4 text-center text-xs text-zinc-400">Nenhum lançamento registrado.</div>
+          ` : `
+            <div class="space-y-1.5">
+              ${currentClientTxs.map(t => `
+                <div class="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-xs">
+                  <div>
+                    <div class="font-medium text-zinc-900 dark:text-zinc-100">${t.title}</div>
+                    <div class="text-[10px] text-zinc-400">Data: ${formatDate(t.dueDate || t.date)} • ${t.category} • ${t.paymentMethod || 'PIX'}</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="text-right">
+                      <span class="font-bold ${t.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'}">${t.type === 'expense' ? '-' : '+'}${formatCurrency(t.amount)}</span>
+                      <div class="mt-0.5">${getInstallmentStatusBadge(t.installmentStatus || t.status, t.dueDate)}</div>
+                    </div>
+                    ${t.status !== 'paid' ? `
+                      <button class="client-inst-pay-btn px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-semibold" data-id="${t.id}">
+                        Baixar
+                      </button>
+                    ` : ''}
+                    <button class="client-inst-edit-btn p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" data-id="${t.id}">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                    </button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
       </div>
     `;
 
-    // Mark paid buttons
-    tabContainer.querySelectorAll('.mark-paid-btn').forEach(btn => {
+    // Click handler: Baixar parcela
+    tabContainer.querySelectorAll('.client-inst-pay-btn').forEach(btn => {
       btn.onclick = () => {
         const txId = btn.getAttribute('data-id');
-        store.markTransactionAsPaid(txId);
-        toast.success('Receita marcada como paga com sucesso!');
+        store.updateInstallmentStatus(txId, 'Recebida');
+        toast.success('Parcela baixada com sucesso! Saldo e LTV recalculados.');
         renderFinanceTab();
+        if (onRefreshList) onRefreshList();
       };
     });
 
+    // Click handler: Editar parcela (vencimento, notas, comprovante)
+    tabContainer.querySelectorAll('.client-inst-edit-btn').forEach(btn => {
+      btn.onclick = () => {
+        const txId = btn.getAttribute('data-id');
+        openEditTransactionModal(txId, () => {
+          renderFinanceTab();
+          if (onRefreshList) onRefreshList();
+        });
+      };
+    });
+
+    // Click handler: Nova Receita
     const addTxBtn = tabContainer.querySelector('#tab-add-tx-btn');
-    if (addTxBtn) addTxBtn.onclick = () => openCreateTransactionForClientModal(client, () => { renderFinanceTab(); if (onRefreshList) onRefreshList(); });
+    if (addTxBtn) {
+      addTxBtn.onclick = () => {
+        openTransactionModal('income', 'business', () => {
+          renderFinanceTab();
+          if (onRefreshList) onRefreshList();
+        }, { clientId: client.id, title: `Receita - ${client.name}` });
+      };
+    }
+
+    const btnCreateInstQuick = tabContainer.querySelector('#btn-create-inst-quick');
+    if (btnCreateInstQuick) {
+      btnCreateInstQuick.onclick = () => {
+        openTransactionModal('income', 'business', () => {
+          renderFinanceTab();
+          if (onRefreshList) onRefreshList();
+        }, { clientId: client.id, title: `Projeto Parcelado - ${client.name}` });
+      };
+    }
   }
 
   function renderProposalsTab() {
@@ -1176,188 +1340,9 @@ function openCreateProposalForClientModal(client, onSuccess) {
 }
 
 function openCreateTransactionForClientModal(client, onSuccess) {
-  const content = `
-    <form id="client-create-tx-form" class="space-y-3.5">
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Tipo de Lançamento *</label>
-          <select name="type" id="client-tx-type" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-semibold">
-            <option value="income" selected>Receita (Entrada)</option>
-            <option value="expense">Despesa (Saída vinculada)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Valor (R$) *</label>
-          <input required type="number" step="0.01" name="amount" placeholder="1500.00" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-900 dark:text-zinc-100">
-        </div>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Título / Descrição *</label>
-        <input required name="title" placeholder="Ex: Contrato de Retainer Mensal..." class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
-      </div>
-
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Data / Início *</label>
-          <input required type="date" name="startDate" value="${new Date().toISOString().split('T')[0]}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Forma de Pagamento</label>
-          <select name="paymentMethod" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
-            <option value="PIX" selected>PIX</option>
-            <option value="Boleto">Boleto Bancário</option>
-            <option value="Cartão">Cartão de Crédito</option>
-            <option value="Transferência">TED / Transferência</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- SEÇÃO DE RECORRÊNCIA REAL -->
-      <div class="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-2.5">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="client-chk-recurring" class="rounded border-zinc-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-600">
-          <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">Lançamento recorrente</span>
-        </label>
-
-        <div id="client-recurring-fields" class="hidden space-y-2.5 pt-1">
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="block text-[11px] font-semibold text-zinc-500 uppercase">Frequência</label>
-              <select name="frequency" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-                <option value="mensal" selected>Mensal</option>
-                <option value="semanal">Semanal</option>
-                <option value="bimestral">Bimestral</option>
-                <option value="trimestral">Trimestral</option>
-                <option value="semestral">Semestral</option>
-                <option value="anual">Anual</option>
-                <option value="personalizada">Personalizada</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-[11px] font-semibold text-zinc-500 uppercase">Duração</label>
-              <select id="client-duration-mode" name="durationMode" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-                <option value="occurrences" selected>Número de ocorrências</option>
-                <option value="until_date">Até uma data de término</option>
-                <option value="infinite">Sem término (Contínuo)</option>
-              </select>
-            </div>
-          </div>
-
-          <div id="client-occ-count-group">
-            <label class="block text-[11px] font-semibold text-zinc-500 uppercase">Número de Ocorrências (Meses/Parcelas)</label>
-            <input type="number" min="1" max="60" name="occurrencesCount" value="6" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Ex: 6 para 6 meses">
-          </div>
-
-          <div id="client-end-date-group" class="hidden">
-            <label class="block text-[11px] font-semibold text-zinc-500 uppercase">Data de Término</label>
-            <input type="date" name="endDate" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-          </div>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Status Inicial</label>
-          <select name="status" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
-            <option value="pending" selected>Pendente (A Receber / A Pagar)</option>
-            <option value="paid">Já Pago (Baixado)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Categoria</label>
-          <input name="category" value="Serviços & Projetos" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs">
-        </div>
-      </div>
-
-      <div class="pt-2 flex justify-end gap-2">
-        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors">Salvar Lançamento</button>
-      </div>
-    </form>
-  `;
-
-  const m = modal.open({
-    title: `Lançamento Financeiro — ${client.name}`,
-    content,
-    size: 'md'
-  });
-
-  const form = m.panel.querySelector('#client-create-tx-form');
-  const chkRec = form.querySelector('#client-chk-recurring');
-  const recFields = form.querySelector('#client-recurring-fields');
-  const durationMode = form.querySelector('#client-duration-mode');
-  const occGroup = form.querySelector('#client-occ-count-group');
-  const endGroup = form.querySelector('#client-end-date-group');
-
-  chkRec.onchange = () => {
-    recFields.classList.toggle('hidden', !chkRec.checked);
-  };
-
-  durationMode.onchange = () => {
-    if (durationMode.value === 'occurrences') {
-      occGroup.classList.remove('hidden');
-      endGroup.classList.add('hidden');
-    } else if (durationMode.value === 'until_date') {
-      occGroup.classList.add('hidden');
-      endGroup.classList.remove('hidden');
-    } else {
-      occGroup.classList.add('hidden');
-      endGroup.classList.add('hidden');
-    }
-  };
-
-  form.onsubmit = (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const type = fd.get('type');
-    const isRecurring = chkRec.checked;
-
-    if (isRecurring) {
-      const res = store.addRecurringRule({
-        title: fd.get('title'),
-        type,
-        scope: 'business',
-        amount: parseFloat(fd.get('amount')) || 0,
-        startDate: fd.get('startDate'),
-        endDate: fd.get('endDate') || null,
-        durationMode: fd.get('durationMode'),
-        occurrencesCount: fd.get('occurrencesCount'),
-        frequency: fd.get('frequency'),
-        category: fd.get('category'),
-        paymentMethod: fd.get('paymentMethod'),
-        initialStatus: fd.get('status'),
-        clientId: client.id,
-        clientName: client.name
-      });
-      store.addClientActivity(client.id, {
-        type: 'finance',
-        title: `Contrato recorrente criado: ${fd.get('title')} (${res.occurrences.length} ocorrências)`
-      });
-      toast.success(`Recorrência criada com ${res.occurrences.length} ocorrências geradas!`);
-    } else {
-      const tx = store.addTransaction({
-        title: fd.get('title'),
-        type,
-        amount: parseFloat(fd.get('amount')) || 0,
-        dueDate: fd.get('startDate'),
-        date: fd.get('startDate'),
-        paymentMethod: fd.get('paymentMethod'),
-        status: fd.get('status'),
-        category: fd.get('category'),
-        scope: 'business',
-        clientId: client.id,
-        clientName: client.name
-      });
-      store.addClientActivity(client.id, {
-        type: 'finance',
-        title: `Lançamento registrado: ${tx.title} (${formatCurrency(tx.amount)})`
-      });
-      toast.success('Lançamento financeiro registrado com sucesso!');
-    }
-
-    m.close();
+  openTransactionModal('income', 'business', () => {
     if (onSuccess) onSuccess();
-  };
+  }, { clientId: client.id, title: `Receita - ${client.name}` });
 }
 
 function openAddDocumentForClientModal(client, onSuccess) {

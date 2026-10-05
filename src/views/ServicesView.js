@@ -209,6 +209,119 @@ export function renderServicesView(container, onNavigate) {
   });
 }
 
+function getPaymentConditionFieldsHtml(prefix, initial = {}) {
+  const condType = initial.paymentConditionType || 'pagamento_unico';
+  const downPayment = initial.defaultDownPayment !== undefined ? initial.defaultDownPayment : (initial.downPayment || '');
+  const instCount = initial.defaultInstallmentsCount || initial.installmentsCount || '2';
+  const frequency = initial.defaultFrequency || initial.frequency || 'mensal';
+  const customCondition = initial.customCondition || '';
+  const paymentTerms = initial.paymentTerms || 'Pagamento único à vista';
+
+  return `
+    <div class="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-zinc-700/80 space-y-2.5">
+      <div>
+        <label class="block text-xs font-semibold text-zinc-700 dark:text-zinc-200 mb-1">Condições de Pagamento Padrão *</label>
+        <select name="${prefix}ConditionType" id="${prefix}-cond-type" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-medium">
+          <option value="pagamento_unico" ${condType === 'pagamento_unico' ? 'selected' : ''}>Pagamento único (à vista)</option>
+          <option value="entrada_parcelas" ${condType === 'entrada_parcelas' ? 'selected' : ''}>Entrada + parcelas</option>
+          <option value="parcelamento_sem_entrada" ${condType === 'parcelamento_sem_entrada' ? 'selected' : ''}>Parcelamento sem entrada</option>
+          <option value="recorrente" ${condType === 'recorrente' ? 'selected' : ''}>Recorrente (mensal, trimestral, semestral, anual)</option>
+          <option value="personalizada" ${condType === 'personalizada' ? 'selected' : ''}>Condição personalizada</option>
+        </select>
+      </div>
+
+      <!-- Detalhes Entrada + Parcelas -->
+      <div id="${prefix}-box-entrada" class="${condType === 'entrada_parcelas' ? '' : 'hidden'} grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-[11px] font-medium text-zinc-500">Valor da Entrada (R$)</label>
+          <input type="number" step="0.01" name="${prefix}DownPayment" id="${prefix}-down-payment" value="${downPayment}" placeholder="Ex: 1000" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium text-zinc-500">Qtd Parcelas</label>
+          <input type="number" min="1" max="60" name="${prefix}InstallmentsCount" id="${prefix}-inst-count" value="${instCount}" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+        </div>
+      </div>
+
+      <!-- Detalhes Sem Entrada -->
+      <div id="${prefix}-box-sem-entrada" class="${condType === 'parcelamento_sem_entrada' ? '' : 'hidden'}">
+        <label class="block text-[11px] font-medium text-zinc-500">Quantidade de Parcelas</label>
+        <input type="number" min="2" max="60" name="${prefix}InstallmentsCountNoDown" id="${prefix}-inst-no-down" value="${instCount}" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+      </div>
+
+      <!-- Detalhes Recorrente -->
+      <div id="${prefix}-box-recorrente" class="${condType === 'recorrente' ? '' : 'hidden'}">
+        <label class="block text-[11px] font-medium text-zinc-500">Frequência Recorrente</label>
+        <select name="${prefix}Frequency" id="${prefix}-frequency" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          <option value="mensal" ${frequency === 'mensal' ? 'selected' : ''}>Mensal</option>
+          <option value="trimestral" ${frequency === 'trimestral' ? 'selected' : ''}>Trimestral</option>
+          <option value="semestral" ${frequency === 'semestral' ? 'selected' : ''}>Semestral</option>
+          <option value="anual" ${frequency === 'anual' ? 'selected' : ''}>Anual</option>
+        </select>
+      </div>
+
+      <!-- Detalhes Personalizada -->
+      <div id="${prefix}-box-personalizada" class="${condType === 'personalizada' ? '' : 'hidden'}">
+        <label class="block text-[11px] font-medium text-zinc-500">Descrição Personalizada</label>
+        <input name="${prefix}CustomCondition" id="${prefix}-custom" value="${customCondition}" placeholder="Ex: 50% sinal + 50% na aprovação final" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+      </div>
+
+      <div>
+        <label class="block text-[11px] font-medium text-zinc-500">Descrição Comercial para o Cliente</label>
+        <input name="paymentTerms" id="${prefix}-payment-terms" value="${paymentTerms}" placeholder="Ex: Entrada de R$ 1.000 + 2x de R$ 500" class="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+      </div>
+    </div>
+  `;
+}
+
+function bindPaymentConditionEvents(panel, prefix) {
+  const selectType = panel.querySelector(`#${prefix}-cond-type`);
+  if (!selectType) return;
+  const boxEntrada = panel.querySelector(`#${prefix}-box-entrada`);
+  const boxSemEntrada = panel.querySelector(`#${prefix}-box-sem-entrada`);
+  const boxRecorrente = panel.querySelector(`#${prefix}-box-recorrente`);
+  const boxPersonalizada = panel.querySelector(`#${prefix}-box-personalizada`);
+  const paymentTermsInput = panel.querySelector(`#${prefix}-payment-terms`);
+
+  const downInput = panel.querySelector(`#${prefix}-down-payment`);
+  const countInput = panel.querySelector(`#${prefix}-inst-count`);
+  const noDownCountInput = panel.querySelector(`#${prefix}-inst-no-down`);
+  const freqSelect = panel.querySelector(`#${prefix}-frequency`);
+  const customInput = panel.querySelector(`#${prefix}-custom`);
+
+  function updateTerms() {
+    const val = selectType.value;
+    if (boxEntrada) boxEntrada.classList.toggle('hidden', val !== 'entrada_parcelas');
+    if (boxSemEntrada) boxSemEntrada.classList.toggle('hidden', val !== 'parcelamento_sem_entrada');
+    if (boxRecorrente) boxRecorrente.classList.toggle('hidden', val !== 'recorrente');
+    if (boxPersonalizada) boxPersonalizada.classList.toggle('hidden', val !== 'personalizada');
+
+    if (!paymentTermsInput) return;
+
+    if (val === 'pagamento_unico') {
+      paymentTermsInput.value = 'Pagamento único à vista';
+    } else if (val === 'entrada_parcelas') {
+      const down = downInput && downInput.value ? `Entrada de R$ ${downInput.value}` : 'Entrada';
+      const c = (countInput && countInput.value) || '2';
+      paymentTermsInput.value = `${down} + ${c} parcelas`;
+    } else if (val === 'parcelamento_sem_entrada') {
+      const c = (noDownCountInput && noDownCountInput.value) || '2';
+      paymentTermsInput.value = `${c} parcelas sem entrada`;
+    } else if (val === 'recorrente') {
+      const f = (freqSelect && freqSelect.value) || 'mensal';
+      paymentTermsInput.value = `Recorrente ${f}`;
+    } else if (val === 'personalizada') {
+      paymentTermsInput.value = (customInput && customInput.value) || 'Condição personalizada';
+    }
+  }
+
+  selectType.onchange = updateTerms;
+  if (downInput) downInput.oninput = updateTerms;
+  if (countInput) countInput.oninput = updateTerms;
+  if (noDownCountInput) noDownCountInput.oninput = updateTerms;
+  if (freqSelect) freqSelect.onchange = updateTerms;
+  if (customInput) customInput.oninput = updateTerms;
+}
+
 function openNewProposalFromServiceModal(service, onNavigate) {
   const { clients } = store.getState();
   const content = `
@@ -237,17 +350,24 @@ function openNewProposalFromServiceModal(service, onNavigate) {
       <div class="grid grid-cols-2 gap-2">
         <div>
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Prazo de Entrega</label>
-          <input name="deadline" value="${service.timeline}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
+          <input name="deadline" value="${service.timeline || '15 dias'}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
         </div>
         <div>
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Validade da Proposta</label>
           <input type="date" name="validity" value="${new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
         </div>
       </div>
-      <div>
-        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Condições de Pagamento</label>
-        <input name="paymentTerms" value="${service.paymentTerms || ''}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-      </div>
+
+      <!-- Condições de Pagamento carregadas automaticamente do serviço -->
+      ${getPaymentConditionFieldsHtml('propSrv', {
+        paymentConditionType: service.paymentConditionType || (service.paymentTerms && service.paymentTerms.toLowerCase().includes('entrada') ? 'entrada_parcelas' : 'pagamento_unico'),
+        defaultDownPayment: service.defaultDownPayment || (service.price ? Math.round(service.price / 2) : 0),
+        defaultInstallmentsCount: service.defaultInstallmentsCount || 2,
+        defaultFrequency: service.defaultFrequency || 'mensal',
+        customCondition: service.customCondition || '',
+        paymentTerms: service.paymentTerms || 'Pagamento único à vista'
+      })}
+
       <div class="pt-2 flex justify-end gap-2">
         <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors">Gerar Proposta Oficial (+20 XP)</button>
       </div>
@@ -260,11 +380,18 @@ function openNewProposalFromServiceModal(service, onNavigate) {
     size: 'md'
   });
 
+  bindPaymentConditionEvents(m.panel, 'propSrv');
+
   m.panel.querySelector('#srv-create-prop-form').onsubmit = (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const clientId = fd.get('clientId');
     const client = clients.find(c => c.id === clientId);
+    const condType = fd.get('propSrvConditionType') || 'pagamento_unico';
+    const downPayment = condType === 'entrada_parcelas' ? (parseFloat(fd.get('propSrvDownPayment')) || 0) : 0;
+    const installmentsCount = condType === 'entrada_parcelas'
+      ? (parseInt(fd.get('propSrvInstallmentsCount')) || 2)
+      : (condType === 'parcelamento_sem_entrada' ? (parseInt(fd.get('propSrvInstallmentsCountNoDown')) || 2) : 1);
 
     const prop = store.addProposal({
       clientId: clientId || null,
@@ -278,6 +405,11 @@ function openNewProposalFromServiceModal(service, onNavigate) {
       deadline: fd.get('deadline'),
       validity: fd.get('validity'),
       paymentTerms: fd.get('paymentTerms'),
+      paymentCondition: fd.get('paymentTerms'),
+      paymentConditionType: condType,
+      downPayment,
+      installmentsCount,
+      frequency: fd.get('propSrvFrequency') || 'mensal',
       status: 'enviada'
     });
 
@@ -309,19 +441,17 @@ function openNewServiceModal(onSuccess) {
         </div>
         <div>
           <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Preço Padrão (R$) *</label>
-          <input required type="number" step="0.01" name="price" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="2500">
+          <input required type="number" step="0.01" name="price" id="new-srv-price" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="2500">
         </div>
       </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Prazo Médio</label>
-          <input name="timeline" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Ex: 15 dias ou Mensal">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Forma de Pagamento</label>
-          <input name="paymentTerms" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Ex: 50% entrada + 50% entrega">
-        </div>
+      <div>
+        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Prazo Médio</label>
+        <input name="timeline" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Ex: 15 dias ou Mensal">
       </div>
+
+      <!-- Condições de Pagamento Padrão -->
+      ${getPaymentConditionFieldsHtml('newSrv')}
+
       <div>
         <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Descrição</label>
         <textarea name="description" rows="2" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs" placeholder="Objetivo e escopo geral do serviço..."></textarea>
@@ -342,11 +472,19 @@ function openNewServiceModal(onSuccess) {
     size: 'md'
   });
 
+  bindPaymentConditionEvents(m.panel, 'newSrv');
+
   m.panel.querySelector('#srv-new-form').onsubmit = (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const delivStr = fd.get('deliverables');
     const deliverables = delivStr ? delivStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const condType = fd.get('newSrvConditionType') || 'pagamento_unico';
+    const defaultDownPayment = condType === 'entrada_parcelas' ? (parseFloat(fd.get('newSrvDownPayment')) || 0) : 0;
+    const defaultInstallmentsCount = condType === 'entrada_parcelas'
+      ? (parseInt(fd.get('newSrvInstallmentsCount')) || 2)
+      : (condType === 'parcelamento_sem_entrada' ? (parseInt(fd.get('newSrvInstallmentsCountNoDown')) || 2) : 1);
 
     store.addService({
       name: fd.get('name'),
@@ -354,6 +492,11 @@ function openNewServiceModal(onSuccess) {
       price: parseFloat(fd.get('price')) || 0,
       timeline: fd.get('timeline'),
       paymentTerms: fd.get('paymentTerms'),
+      paymentConditionType: condType,
+      defaultDownPayment,
+      defaultInstallmentsCount,
+      defaultFrequency: fd.get('newSrvFrequency') || 'mensal',
+      customCondition: fd.get('newSrvCustomCondition') || '',
       description: fd.get('description'),
       deliverables
     });
@@ -381,16 +524,14 @@ function openEditServiceModal(service, onSuccess) {
           <input required type="number" step="0.01" name="price" value="${service.price}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
         </div>
       </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Prazo Médio</label>
-          <input name="timeline" value="${service.timeline || ''}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Forma de Pagamento</label>
-          <input name="paymentTerms" value="${service.paymentTerms || ''}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
-        </div>
+      <div>
+        <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Prazo Médio</label>
+        <input name="timeline" value="${service.timeline || ''}" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">
       </div>
+
+      <!-- Condições de Pagamento Padrão -->
+      ${getPaymentConditionFieldsHtml('editSrv', service)}
+
       <div>
         <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Descrição</label>
         <textarea name="description" rows="2" class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs">${service.description || ''}</textarea>
@@ -412,11 +553,19 @@ function openEditServiceModal(service, onSuccess) {
     size: 'md'
   });
 
+  bindPaymentConditionEvents(m.panel, 'editSrv');
+
   m.panel.querySelector('#srv-edit-form').onsubmit = (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const delivStr = fd.get('deliverables');
     const deliverables = delivStr ? delivStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const condType = fd.get('editSrvConditionType') || 'pagamento_unico';
+    const defaultDownPayment = condType === 'entrada_parcelas' ? (parseFloat(fd.get('editSrvDownPayment')) || 0) : 0;
+    const defaultInstallmentsCount = condType === 'entrada_parcelas'
+      ? (parseInt(fd.get('editSrvInstallmentsCount')) || 2)
+      : (condType === 'parcelamento_sem_entrada' ? (parseInt(fd.get('editSrvInstallmentsCountNoDown')) || 2) : 1);
 
     store.updateService(service.id, {
       name: fd.get('name'),
@@ -424,6 +573,11 @@ function openEditServiceModal(service, onSuccess) {
       price: parseFloat(fd.get('price')) || 0,
       timeline: fd.get('timeline'),
       paymentTerms: fd.get('paymentTerms'),
+      paymentConditionType: condType,
+      defaultDownPayment,
+      defaultInstallmentsCount,
+      defaultFrequency: fd.get('editSrvFrequency') || 'mensal',
+      customCondition: fd.get('editSrvCustomCondition') || '',
       description: fd.get('description'),
       deliverables
     });
